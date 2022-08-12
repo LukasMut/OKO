@@ -1,0 +1,16 @@
+*.pyc
+*.csv
+*.tsv
+*.DS_Store
+*.zip
+*.tar
+*.png
+*.jpg
+*.txt
+.ipynb_checkpoints/*
+*.npz
+*.npy
+*.ipynb
+*.pkl
+*.swp
+*.sh
