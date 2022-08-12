@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*
+
+import os
+import re
+import flax
+import pickle
+import h5py
+import torch
+import jax
+
+import numpy as np
+import jax.numpy as jnp
+import haiku as hk
+
+from collections import Counter
+from jax import random
+from flax import serialization
+from data_loader import DataLoader
+from data_partitioner import FewShotPartitioner
+from functools import partial
+from typing import Iterator, Tuple
+from ml_collections import config_dict
+
+TASKS = ['mle_vanilla', 'mle_finetuning', 'ooo_dist', 'ooo_clf']
+MODELS = ['Custom', 'ResNet18', 'ResNet50', 'ResNet101', 'ViT']
+
+Array = jnp.ndarray
+FrozenDict = config_dict.FrozenConfigDict 
+
+
+def load_data(root: str, file: str) -> dict:
+    with h5py.File(os.path.join(root, file), 'r') as f:
+        data = {k: f[k][:] for k in f.keys()}
+    return data
+
+def uniform(n_classes):
+    return np.ones(n_classes) * (1 / n_classes)
+
+
+def load_metrics(metric_path):
+    """Load pretrained parameters into memory."""
+    binary = find_binaries(metric_path)
+    metrics = pickle.loads(
+        open(os.path.join(metric_path, binary), 'rb').read())
+    return metrics
+
+
+def save_params(out_path, params, epoch):
+    """Encode parameters of network as bytes and save as binary file."""
+    if not os.path.exists(out_path):
+        os.makedirs(out_path, exist_ok=True)
+    bytes_output = serialization.to_bytes(params)
+    with open(os.path.join(out_path, f'pretrained_params_{epoch}.pkl'), 'wb') as f:
+        pickle.dump(bytes_output, f)
+
+
+def save_opt_state(out_path, opt_state, epoch):
+    """Encode parameters of network as bytes and save as binary file."""
+    if not os.path.exists(out_path):
+        os.makedirs(out_path, exist_ok=True)
+    bytes_output = serialization.to_bytes(opt_state)
+    with open(os.path.join(out_path, f'opt_state_{epoch}.pkl'), 'wb') as f:
+        pickle.dump(bytes_output, f)
+
+
+def find_binaries(param_path):
+    """Search for last checkpoint."""
+    param_binaries = sorted([f for _, _, files in os.walk(
+        param_path) for f in files if re.search(r'(?=.*\d+)(?=.*pkl$)', f)])
+    return param_binaries.pop()
+
+
+def get_epoch(binary):
+    return int(''.join(c for c in binary if c.isdigit()))
+
+
+def load_params(model, model_type, task, source, param_path, input_dim, batch_size, k, rnd_seed):
+    """Load pretrained parameters into memory."""
+    binary = find_binaries(param_path)
+    try:
+        last_checkpoint = get_epoch(binary)
+    except ValueError:
+        last_checkpoint = 0
+    bytes_output = pickle.loads(
+        open(os.path.join(param_path, binary), 'rb').read())
+    params = init_params(
+        model=model,
+        model_type=model_type,
+        task=task,
+        source=source,
+        input_dim=input_dim,
+        batch_size=batch_size,
+        k=k,
+        rnd_seed=rnd_seed
+        )
+    pretrained_params = serialization.from_bytes(params, bytes_output)
+    return pretrained_params, last_checkpoint
+
+
+def merge_params(pretrained_params, current_params):
+    return flax.core.FrozenDict({'encoder': pretrained_params['encoder'], 'clf': current_params['clf']})
+
+
+def get_val_set(dataset, data_path) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    if dataset == 'cifar10':
+        data = np.load(
+            os.path.join(data_path, 'validation.npz')
+        )
+        X = data['data']
+        y = data['labels']
+    else:
+        data = torch.load(
+            os.path.join(data_path, 'validation.pt')
+        )
+        X = data[0].numpy()
+        y = data[1].numpy()
+    X = jnp.array(X)
+    X = X.reshape(X.shape[0], -1)
+    y = jax.nn.one_hot(y, jnp.max(y) + 1)
+    return (X, y)
+
+
+def get_full_dataset(partitioner: object) -> Tuple[Array, Array]:
+    # get full dataset
+    images = jnp.array(partitioner.images)
+    if hasattr(partitioner, 'transform'):
+        transforms = partitioner.get_transform()
+        images = jnp.array([transforms(img).permute(1, 2, 0).numpy() for img in images])
+    images = images.reshape(images.shape[0], -1)
+    labels = partitioner.labels
+    labels = jax.nn.one_hot(labels, jnp.max(labels) + 1)
+    rnd_perm = np.random.permutation(
+        np.arange(images.shape[0]))
+    images = images[rnd_perm]
+    labels = labels[rnd_perm]
+    return (images, labels)
+
+
+def get_fewshot_subsets(args, alpha, n_samples, rnd_seed) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    train_partitioner = FewShotPartitioner(
+            dataset=args.dataset,
+            data_path=args.data_path,
+            n_samples=n_samples,
+            distribution=args.distribution,
+            seed=rnd_seed,
+            min_samples=args.min_samples,
+            alpha=alpha,
+            train=True,
+            )
+    val_partitioner = FewShotPartitioner(
+            dataset=args.dataset,
+            data_path=args.data_path,
+            n_samples=n_samples,
+            distribution=args.distribution,
+            seed=rnd_seed,
+            min_samples=args.min_samples,
+            alpha=alpha,
+            train=True,
+        )
+    if n_samples:
+       # get a subset of the data with M samples per class
+       train_set = train_partitioner.get_subset()
+       val_set = val_partitioner.get_subset()
+    else:
+        train_set = get_full_dataset(train_partitioner)
+        if args.task.startswith('mle') and args.distribution == 'homogeneous':
+            val_set = get_val_set(args.dataset, args.data_path)
+        elif args.task.startswith('mle') and args.distribution == 'heterogeneous':
+            val_set = get_full_dataset(train_partitioner)        
+    return train_set, val_set
+
+def f(alpha: float, k: int):
+    """Exponential function with rapid decay, parameterized by the positive real alpha."""
+    return 1 / ((k + 1) ** alpha)
+
+def sample_instances(n_classes: int, n_totals: int, alpha: float):
+    k = np.random.permutation(np.arange(n_classes))  # permutation of classes
+    q = partial(f, alpha)(k)
+    q /= q.sum()  # division by the sum is necessary to create a probability distribution
+    sample = np.random.choice(n_classes, size=n_totals, replace=True, p=q)
+    sample = add_remainder(sample, n_classes)
+    return q, sample
+
+
+def add_remainder(sample: np.ndarray, n_classes: int) -> np.ndarray:
+    remainder = np.array([y for y in np.arange(n_classes)
+                         if y not in np.unique(sample)])
+    sample = np.hstack((sample, remainder))
+    return sample
+
+
+def get_histogram(sample: np.ndarray, min_samples: int) -> np.ndarray:
+    _, hist = zip(*sorted(Counter(sample).items(),
+                  key=lambda kv: kv[0], reverse=False))
+    hist = np.array(hist)
+    # guarantee that there are at least C (= min_samples) examples per class
+    hist = np.where(hist < min_samples, hist + abs(hist - min_samples), hist)
+    return hist
+
+
+def get_subset(y, hist):
+    subset = []
+    for k, freq in enumerate(hist):
+        subset.extend(np.random.choice(np.where(y == k)[
+                      0], size=freq, replace=False).tolist())
+    subset = np.random.permutation(subset)
+    return subset
+
+
+def sample_subset(X: np.ndarray, y: np.ndarray, N: int, C: int, alpha: int) -> Tuple[np.ndarray, np.ndarray]:
+    M = len(np.unique(y))
+    _, sample, _ = sample_instances(M, N, alpha)
+    hist = get_histogram(sample, C)
+    subset = get_subset(y, hist)
+    X_prime = X[subset]
+    y_prime = y[subset]
+    y_prime = jax.nn.one_hot(y_prime, M)
+    return (X_prime, y_prime)
+
+
+def get_class_weights(M: int, K: int, C: int, alpha: float) -> np.ndarray:
+    """Compute class weights to calculate weighted cross-entropy error."""
+    N = M * K
+    _, sample, _ = sample_instances(K, N, alpha)
+    hist = get_histogram(sample, C)
+    q_prime = hist / hist.sum()  # empirical class distribution (different from q)
+    w = q_prime ** (-1)
+    # smooth class weights to avoid exploding gradient problems
+    w = (w / w.sum()) * K
+    return w
