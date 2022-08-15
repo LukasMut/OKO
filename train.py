@@ -41,7 +41,7 @@ def get_combination(
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"
-    return combs[0] # combs[int(os.environ["SGE_TASK_ID"])]
+    return combs[int(os.environ["SGE_TASK_ID"])]
 
 
 def make_path(
@@ -73,7 +73,7 @@ def create_dirs(
     dir_config = config_dict.ConfigDict()
     log_dir = make_path(results_root, model_config, data_config, rnd_seed)
     dir_config.log_dir = log_dir
-    
+
     if not os.path.exists(log_dir):
         print("\n...Creating results directory.\n")
         os.makedirs(log_dir, exist_ok=True)
@@ -218,7 +218,7 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             num_patches=64,
             num_classes=model_config.n_classes,
             dropout_prob=0.2,
-            triplet_dim=512 if model_config.task in ['mtl', 'ooo'] else None,
+            triplet_dim=512 if model_config.task == "mtl" else None,
             task=model_config.task,
             capture_intermediates=False,
         )
@@ -236,7 +236,7 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             num_classes=model_config.n_classes,
             source=data_config.name,
             task=model_config.task,
-            triplet_dim=128 if model_config.task in ['mtl', 'ooo'] else None,
+            triplet_dim=128 if model_config.task == "mtl" else None,
             capture_intermediates=False,
         )
     else:
