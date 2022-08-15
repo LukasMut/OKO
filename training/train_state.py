@@ -41,15 +41,15 @@ class TrainState(struct.PyTreeNode):
         tx: An Optax gradient transformation.
         opt_state: The state for `tx`.
         batch_stats: storing batch norm stats
-        freeze_encoder: if True only updates parameters of linear probe / classification head
     """
     step: int
     apply_fn: Callable = struct.field(pytree_node=False)
-    params: flax.core.FrozenDict[str, Any]
+    mle_params: flax.core.FrozenDict[str, Any]
     tx: optax.GradientTransformation = struct.field(pytree_node=False)
-    opt_state: optax.OptState
-    freeze_encoder: bool
+    mle_opt_state: optax.OptState
     batch_stats: Any = None
+    ooo_params: flax.core.FrozenDict[str, Any] = None
+    ooo_opt_state: flax.core.FrozenDict[str, Any] = None
     
     
     def apply_gradients(self, *, grads, **kwargs):
@@ -67,38 +67,54 @@ class TrainState(struct.PyTreeNode):
         and `opt_state` updated by applying `grads`, and additional attributes
         replaced as specified by `kwargs`.
         """
-        if self.freeze_encoder:
-            head_grads = grads["mlp_head"]
-            head_params = self.params["mlp_head"]
-            updates, new_opt_state = self.tx.update(
-                    head_grads, self.opt_state, head_params
-            )
-            updated_head = optax.apply_updates(head_params, updates)
-            del self.params["mlp_head"]
-            self.params.update({"mlp_head": updated_head})
-            new_params = self.params
+        task = kwargs.pop('task')
+        updates, new_opt_state = self.tx.update(
+        grads, getattr(self, f'{task}_opt_state'), getattr(self, f'{task}_params'))
+        new_params = optax.apply_updates(getattr(self, f'{task}_params'), updates)
+        if task == 'mle':
+            return self.replace(
+                    step=self.step + 1,
+                    mle_params=new_params,
+                    mle_opt_state=new_opt_state,
+                    **kwargs,
+                )
         else:
-            updates, new_opt_state = self.tx.update(
-            grads, self.opt_state, self.params)
-            new_params = optax.apply_updates(self.params, updates)
-
-        return self.replace(
-                step=self.step + 1,
-                params=new_params,
-                opt_state=new_opt_state,
-                **kwargs,
-            )
+            return self.replace(
+                    step=self.step + 1,
+                    ooo_params=new_params,
+                    ooo_opt_state=new_opt_state,
+                    **kwargs,
+                )
     
     @classmethod
-    def create(cls, *, apply_fn, params, tx, freeze_encoder, **kwargs):
+    def create(cls, *, apply_fn, params, tx, **kwargs):
         """Creates a new instance with `step=0` and initialized `opt_state`."""
-        opt_state = tx.init(params["mlp_head"]) if freeze_encoder else tx.init(params)
-        return cls(
-            step=0,
-            apply_fn=apply_fn,
-            params=params,
-            tx=tx,
-            opt_state=opt_state,
-            freeze_encoder=freeze_encoder,
-            **kwargs,
-        )
+        task = kwargs.pop('task')
+        if task == 'mtl':
+            try:
+                ooo_params = kwargs.pop('ooo_params')
+                ooo_opt_state = tx.init(ooo_params)
+            except KeyError:
+                raise Exception('\nTwo sets of params are required for the MTL setting\n')
+            mle_opt_state = tx.init(params)
+            return cls(
+                step=0,
+                apply_fn=apply_fn,
+                mle_params=params,
+                mle_opt_state=mle_opt_state,
+                tx=tx,
+                ooo_params=ooo_params,
+                ooo_opt_state=ooo_opt_state,
+                **kwargs,
+            )
+        else:
+            opt_state = tx.init(params)
+            return cls(
+                step=0,
+                apply_fn=apply_fn,
+                mle_params=params,
+                mle_opt_state=opt_state,
+                tx=tx,
+                **kwargs,
+            ) 
+        

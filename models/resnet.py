@@ -92,42 +92,42 @@ class ResNet(nn.Module):
     def setup(self):
         self.mlp_head = self.make_head()
 
-    @nn.nowrap
-    def make_head(self):
-        """Create target task specific MLP head."""
-        if self.task == "ooo_clf":
-            assert isinstance(
-                self.triplet_dim, int
-            ), "\nDimensionality of triplet head bottleneck is missing.\n"
-            head = TripletHead(
-                backbone="resnet",
-                triplet_dim=self.triplet_dim,
-                capture_intermediates=self.capture_intermediates,
-                dtype=self.dtype,
-            )
-
-        elif self.task == "ooo_dist":
-            # identity function
-            head = nn.Sequential(
-                [
-                    Normalization(),
-                    Identity(),
-                ],
-            )
-
-        elif self.task.startswith("mle"):
-            assert isinstance(
-                self.num_classes, int
-            ), "\nNumber of classes in dataset required.\n"
-            head = nn.Dense(self.num_classes, dtype=self.dtype, name="mlp_head")
+        if self.task == 'mtl':
+            self.mle_head, self.ooo_head = self.make_head()
+        elif self.task == 'mle':
+            self.mle_head = self.make_head()
         else:
             raise ValueError(
                 f"\nOutput heads implemented only for the following tasks: {TASKS}.\n"
             )
+
+
+    @nn.nowrap
+    def make_head(self):
+        """Create target task specific MLP head."""
+        if self.task == 'mle':
+            assert isinstance(
+                self.num_classes, int
+            ), "\nNumber of classes in dataset required.\n"
+            head = nn.Dense(self.num_classes, name="mlp_head")
+        else:
+            assert isinstance(
+                self.num_classes, int
+            ), "\nNumber of classes in dataset required.\n"
+            assert isinstance(
+                self.triplet_dim, int
+            ), "\nDimensionality of triplet head bottleneck required.\n"
+            mle_head = nn.Dense(self.num_classes, name="mlp_head")
+            ooo_head = TripletHead(
+                backbone="custom",
+                triplet_dim=self.triplet_dim,
+                capture_intermediates=self.capture_intermediates,
+            )
+            return mle_head, ooo_head
         return head
 
     @nn.compact
-    def __call__(self, x: Array, train: bool = True) -> Array:
+    def __call__(self, x: Array, current_task=None, train: bool = True) -> Array:
         conv = partial(self.conv, use_bias=False, dtype=self.dtype)
         norm = partial(
             nn.BatchNorm,
@@ -154,7 +154,11 @@ class ResNet(nn.Module):
                     act=self.act,
                 )(x)
         x = x.mean(axis=(1, 2))
-        out = self.mlp_head(x)
+        if self.task == 'mle':
+            out = self.mle_head(x)
+        else:
+            assert isinstance(current_task, str), '\nIn MTL, current task needs to be provided.\n'
+            out = getattr(self, f'{current_task}_head')(x)
         out = jnp.asarray(out, self.dtype)
         return out
 

@@ -148,9 +148,9 @@ def cross_entropy_loss(batch_sims: Array, y: Array) -> Array:
     return jnp.mean(-vlog_softmax(batch_sims, y))
 
 
-@jax.jit
-def cnn_predict(state: FrozenDict, params: FrozenDict, X: Array) -> Array:
-    return state.apply_fn({"params": params}, X)
+# @jax.jit
+def cnn_predict(state: FrozenDict, params: FrozenDict, X: Array, current_task: str) -> Array:
+    return state.apply_fn({"params": params}, X, current_task=current_task)
 
 
 def resnet_predict(
@@ -220,7 +220,7 @@ def mle_loss_fn_custom(
 ) -> Tuple[Array, Tuple[Array]]:
     """MLE loss function used during finetuning."""
     X, y = batch
-    logits = cnn_predict(state=state, params=params, X=X)
+    logits = cnn_predict(state=state, params=params, X=X, current_task='mle')
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     return loss, logits
 
@@ -233,7 +233,7 @@ def ooo_dist_loss_fn_custom(
 ) -> Tuple[Array, Tuple[Array]]:
     """MLE loss function used during finetuning."""
     X, y = batch
-    logits = cnn_predict(state=state, params=params, X=X)
+    logits = cnn_predict(state=state, params=params, X=X, current_task='ooo')
     feats_i, feats_j, feats_k = get_triplets(logits)
     batch_similarities = compute_similarities(feats_i, feats_j, feats_k)
     loss = cross_entropy_loss(batch_similarities, y)
@@ -287,7 +287,7 @@ def cnn_symmetrize(
     X, y = batch
     triplet_perm = X[:, p, :, :, :]
     triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
-    logits = cnn_predict(state, params, triplet_perm)
+    logits = cnn_predict(state, params, triplet_perm, current_task='ooo')
     return logits, y[:, p]
 
 

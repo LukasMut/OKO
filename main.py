@@ -70,13 +70,6 @@ def parseargs():
     aa('--testing', type=str, default='uniform',
         choices=['uniform', 'heterogeneous'],
         help='whether class prior probability at test time should be uniform or similar to training')
-    aa('--fine_tuning', action='store_true',
-        help='whether to fine tune pretrained parameters on cross-entropy classification task (supervised learning)')
-    aa('--freeze_encoder', action='store_true',
-        help='whether to freeze parameters of encoder (no updates wrt to theta of encoder)')
-    aa('--pretraining_task', type=str, default=None,
-        choices=['ooo_dist', 'ooo_clf'],
-        help='Specify which pretraining task to use for model finetuning.')
     aa('--inference', action='store_true',
         help='whether to perform inference without stepping over the data')
     aa('--collect_reps', action='store_true',
@@ -153,12 +146,11 @@ if __name__ == "__main__":
         epochs=epochs,
         steps=args.steps,
         rnd_seed=rnd_seed,
-        freeze_encoder=args.freeze_encoder,
         inference=args.inference,
         regularization=args.regularization
         )
 
-    if args.task.startswith('mle'):
+    if args.task in ["mle", "mtl"]:
         assert isinstance(
             args.data_path, str), '\nPath to MNIST dataset must be provided.\n'
 

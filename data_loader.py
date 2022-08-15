@@ -47,14 +47,28 @@ class DataLoader:
         if self.data_config.name.endswith("mnist"):
             self.X = jnp.expand_dims(self.X, axis=-1)
 
-        if self.model_config.task.startswith("ooo"):
+        if self.model_config.task == 'mtl':
+            self.y = copy.deepcopy(self.data[1])
+            self.dataset = list(zip(self.X, self.y)) 
             self.rng_seq = hk.PRNGSequence(self.seed)
             self.y_prime = jnp.nonzero(self.data[1])[-1]
-            self.classes = np.unique(self.y_prime)
+            self.ooo_classes = np.unique(self.y_prime)
+            self.n_batches = math.ceil(
+                len(self.dataset) / self.data_config.batch_size
+            )
+            num_classes = self.y.shape[-1]
+            self.y_flat = np.nonzero(self.data[1])[1]
+            self.main_classes = np.arange(num_classes)
+
+        elif self.model_config.task == 'ooo':
+            self.rng_seq = hk.PRNGSequence(self.seed)
+            self.y_prime = jnp.nonzero(self.data[1])[-1]
+            self.ooo_classes = np.unique(self.y_prime)
             self.n_batches = math.ceil(
                 self.data_config.max_triplets / self.data_config.batch_size
             )
-        else:
+        
+        elif self.model_config.task == 'mle':
             self.y = copy.deepcopy(self.data[1])
             self.dataset = list(zip(self.X, self.y))
             self.n_batches = math.ceil(len(self.dataset) / self.data_config.batch_size)
@@ -63,9 +77,9 @@ class DataLoader:
                 num_classes = self.y.shape[-1]
                 self.y_flat = np.nonzero(self.data[1])[1]
                 if self.class_subset:
-                    self.classes = np.array(self.class_subset)
+                    self.main_classes = np.array(self.class_subset)
                 else:
-                    self.classes = np.arange(num_classes)
+                    self.main_classes = np.arange(num_classes)
             else:
                 self.remainder = len(self.dataset) % self.data_config.batch_size
 
@@ -86,7 +100,7 @@ class DataLoader:
             def sample_pair(classes, key):
                 return jax.random.choice(key, classes, shape=(2,), replace=False)
 
-            return vmap(partial(sample_pair, self.classes))(keys)
+            return vmap(partial(sample_pair, self.ooo_classes))(keys)
 
         @partial(jax.jit, static_argnames=["alpha"])
         def label_smoothing(y, alpha: float = 0.1) -> Array:
@@ -117,7 +131,7 @@ class DataLoader:
         self.sample_pairs = sample_pairs
         self.label_smoothing = label_smoothing
 
-        if self.model_config.task.startswith("mle"):
+        if self.model_config.task in ['mle', 'mtl']:
             self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
     def stepping(self, random_order: Array) -> Iterator:
@@ -138,20 +152,6 @@ class DataLoader:
                 sampling=self.data_config.sampling,
                 train=self.train,
                 random_order=random_order,
-            )
-            yield (X, y)
-
-    def batch_balancing(self) -> Iterator:
-        """Sample classes uniformly for each randomly sampled mini-batch."""
-        for _ in range(self.n_batches):
-            sample = np.random.choice(self.classes, size=self.data_config.batch_size)
-            subset = [
-                np.random.choice(np.where(self.y_flat == cls)[0]) for cls in sample
-            ]
-            X, y = self.unzip_pairs(
-                subset=subset,
-                sampling=self.data_config.sampling,
-                train=self.train,
             )
             yield (X, y)
 
@@ -183,31 +183,54 @@ class DataLoader:
         converted_labels = jnp.where(first_conversion < 0, last_idx, first_conversion)
         return converted_labels
 
+    def sample_main_batch(self):
+        sample = np.random.choice(self.main_classes, size=self.data_config.batch_size)
+        subset = [
+            np.random.choice(np.where(self.y_flat == cls)[0]) for cls in sample
+        ]
+        X, y = self.unzip_pairs(
+            subset=subset,
+            sampling=self.data_config.sampling,
+            train=self.train,
+        )
+        return (X, y)
+
+    def sample_ooo_batch(self):
+        seed = np.random.randint(low=0, high=1e9, size=1)[0]
+        pairs_subset = self.sample_pairs(seed)
+        triplet_subset, ooo_subset = self.expand(pairs_subset)
+        y = jax.nn.one_hot(x=ooo_subset, num_classes=3)
+        # move NumPy array to device (convert to DeviceArray)
+        triplet_subset = self.sample_triplets(triplet_subset)
+        triplet_subset = triplet_subset.ravel()
+        X = self.X[triplet_subset]
+        X = rearrange(X, "(n k) h w c -> n k h w c", n=X.shape[0] // 3)
+        X = jax.device_put(X)
+        y = jax.device_put(y)
+        return (X, y)
+
+    def main_batch_balancing(self) -> Iterator:
+        """Sample classes uniformly for each randomly sampled mini-batch."""
+        for _ in range(self.n_batches):
+            main_batch = self.sample_main_batch()
+            yield main_batch
+
     def ooo_batch_balancing(self) -> Iterator:
         for _ in range(self.n_batches):
-            seed = np.random.randint(low=0, high=1e9, size=1)[0]
-            pairs_subset = self.sample_pairs(seed)
-            triplet_subset, ooo_subset = self.expand(pairs_subset)
-            if self.model_config.task == "ooo_dist":
-                # centropy and classification error labels are rotations of each other
-                ooo_subset = self.convert_labels(ooo_subset)
-            y = jax.nn.one_hot(x=ooo_subset, num_classes=3)
-            # move NumPy array to device (convert to DeviceArray)
-            triplet_subset = self.sample_triplets(triplet_subset)
-            # .ravel() is more memory-efficient than .flatten() or .reshape(-1)
-            triplet_subset = triplet_subset.ravel()
-            X = self.X[triplet_subset]
-            if self.model_config.task == "ooo_clf":
-                X = rearrange(X, "(n k) h w c -> n k h w c", n=X.shape[0] // 3)
-            # X = jax.device_put(X, self.cpu_devices[0])
-            # y = jax.device_put(y, self.cpu_devices[0])
-            X = jax.device_put(X)#, jax.devices())#[self.device_num])
-            y = jax.device_put(y)#, jax.devices())#[self.device_num])
-            yield (X, y)
+            ooo_batch = self.sample_ooo_batch()
+            yield ooo_batch
+
+    def ooo_mtl_batch_balancing(self):
+        for _ in range(self.n_batches):
+            ooo_batch = self.sample_ooo_batch()
+            main_batch = self.sample_main_batch()
+            yield main_batch, ooo_batch
 
     def __iter__(self) -> Iterator:
-        if self.model_config.task.startswith("ooo"):
+        if self.model_config.task == 'ooo':
             return self.ooo_batch_balancing()
+        elif self.model_config.task == 'mtl':
+            return self.ooo_mtl_batch_balancing() 
         else:
             if self.data_config.sampling == "standard":
                 if self.train:
@@ -215,7 +238,7 @@ class DataLoader:
                     random_order = np.random.permutation(np.arange(len(self.dataset)))
                 return self.stepping(random_order)
             else:
-                return self.batch_balancing()
+                return self.main_batch_balancing()
 
     def __len__(self) -> int:
         return self.n_batches

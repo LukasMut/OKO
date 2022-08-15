@@ -49,16 +49,10 @@ def make_path(
     model_config: FrozenDict,
     data_config: FrozenDict,
     rnd_seed: int,
-    pretraining: bool = False,
 ):
-    task = model_config.pretraining_task if pretraining else model_config.task
-    if model_config.pretraining_task and (model_config.pretraining_task != model_config.task):
-        path = os.path.join(root, model_config.pretraining_task)
-    else:
-        path = root
     path = os.path.join(
-        path,
-        task,
+        root,
+        model_config.task,
         model_config.type + model_config.depth,
         f"{data_config.n_samples}_samples",
         data_config.distribution,
@@ -79,46 +73,12 @@ def create_dirs(
     dir_config = config_dict.ConfigDict()
     log_dir = make_path(results_root, model_config, data_config, rnd_seed)
     dir_config.log_dir = log_dir
-
-    if model_config.fine_tuning:
-        assert isinstance(
-            model_config.pretraining_task, str
-        ), "\nFor fine-tuning, pretraining task must be specified.\n"
-        pretraining_dir = make_path(
-            results_root, model_config, data_config, rnd_seed, pretraining=True
-        )
-        dir_config.pretraining_dir = pretraining_dir
-    else:
-        dir_config.pretraining_dir = None
-
+    
     if not os.path.exists(log_dir):
         print("\n...Creating results directory.\n")
         os.makedirs(log_dir, exist_ok=True)
 
     return dir_config
-
-
-def finetune(
-    trainer: object, train_batches: Iterator, val_batches: Iterator
-) -> Tuple[object, Dict[str, dict], int]:
-    print(
-        "\nLoading pretrained model and freezing pretrained encoder weights to exclusively fine-tune the classification head.\nThis is also called linear probing.\n"
-    )
-    # First: linear probing (train classification head independently)
-    trainer.freeze_encoder = True
-    trainer.load_model(pretrained=True)
-    _, epoch = trainer.train(train_batches, val_batches)
-    print(
-        f"\nClassification head converged on downstream task after {epoch:02d} epochs.\n"
-    )
-    print(
-        "Unfreezing pretrained encoder weights to backpropagate error through the entire network.\n"
-    )
-    # Second: finetuning entire model (unfreeze pretrained encoder weights)
-    trainer.freeze_encoder = False
-    # trainer.load_model(pretrained=False)
-    metrics, epoch = trainer.train(train_batches, val_batches)
-    return trainer, metrics, epoch
 
 
 def run(
@@ -132,7 +92,6 @@ def run(
     epochs: int,
     steps: int,
     rnd_seed: int,
-    freeze_encoder: bool = False,
     inference: bool = False,
     regularization: bool = False,
 ) -> tuple:
@@ -144,7 +103,6 @@ def run(
         dir_config=dir_config,
         steps=steps,
         rnd_seed=rnd_seed,
-        freeze_encoder=freeze_encoder,
         regularization=regularization,
     )
     # TODO: remove inference flag and create separate inference.py file just for inference
@@ -166,14 +124,8 @@ def run(
             seed=rnd_seed,
             train=False,
         )
-        if model_config.fine_tuning:
-            trainer, metrics, epoch = finetune(
-                trainer=trainer,
-                train_batches=train_batches,
-                val_batches=val_batches,
-            )
-        else:
-            metrics, epoch = trainer.train(train_batches, val_batches)
+
+        metrics, epoch = trainer.train(train_batches, val_batches)
     return trainer, metrics, epoch
 
 
@@ -266,7 +218,7 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             num_patches=64,
             num_classes=model_config.n_classes,
             dropout_prob=0.2,
-            triplet_dim=512 if model_config.task == "ooo_clf" else None,
+            triplet_dim=512 if model_config.task in ['mtl', 'ooo'] else None,
             task=model_config.task,
             capture_intermediates=False,
         )
@@ -284,7 +236,7 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             num_classes=model_config.n_classes,
             source=data_config.name,
             task=model_config.task,
-            triplet_dim=128 if model_config.task == "ooo_clf" else None,
+            triplet_dim=128 if model_config.task in ['mtl', 'ooo'] else None,
             capture_intermediates=False,
         )
     else:

@@ -19,8 +19,6 @@ def get_configs(args, **kwargs):
     data_config.min_samples = args.min_samples
     # whether to balance mini-batches
     data_config.sampling = args.sampling
-    # maximum number of sampled triplets
-    data_config.max_triplets = args.max_triplets
     # input dimensionality
     data_config.input_dim = kwargs.pop('input_dim')
     # average number of instances per class
@@ -40,20 +38,14 @@ def get_configs(args, **kwargs):
     model_config.n_classes = args.n_classes
     model_config.task = args.task
 
-    if model_config.task.startswith('ooo'):
-        # NOTE: triplet similarity pretraining needs stronger
-        # l2 regularization than triplet clf pretraining
-        if model_config.task.endswith('dist'):
-            model_config.weight_decay = 1e-1 # 1e-2
-        else:
-            model_config.weight_decay = 1e-2
-    elif model_config.task.endswith('finetuning'):
-        model_config.weight_decay = 1e-4
+    if model_config.task == 'ooo':
+        # l2 regularization during pretraining
+        model_config.weight_decay = 1e-3
+        # maximum number of sampled triplets
+        data_config.max_triplets = args.max_triplets
 
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
-    model_config.fine_tuning = args.fine_tuning
-    model_config.pretraining_task = args.pretraining_task
 
     optimizer_config= config_dict.ConfigDict()
     optimizer_config.name = args.optim
