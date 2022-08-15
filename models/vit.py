@@ -99,45 +99,48 @@ class ViT(nn.Module):
             (1, 1 + self.num_patches, self.embed_dim),
         )
 
-        self.mlp_head = self.make_head()
-
-    @nn.nowrap
-    def make_head(self):
-        """Create target task specific MLP head."""
-        if self.task == "ooo_clf":
-            assert isinstance(
-                self.triplet_dim, int
-            ), "\nDimensionality of triplet head bottleneck required.\n"
-            head = TripletHead(
-                backbone="vit",
-                triplet_dim=self.triplet_dim,
-                capture_intermediates=self.capture_intermediates,
-            )
-
-        elif self.task == "ooo_dist":
-            # identity function
-            head = nn.Sequential(
-                [
-                    Normalization(),
-                    Identity(),
-                ],
-            )
-
-        elif self.task.startswith("mle"):
-            assert isinstance(
-                self.num_classes, int
-            ), "\nNumber of classes in dataset required.\n"
-            head = nn.Sequential(
-                [nn.LayerNorm(), nn.Dense(self.num_classes)], name="mlp_head"
-            )
+        if self.task == "mtl":
+            self.mle_head, self.ooo_head = self.make_head()
+        elif self.task == "mle":
+            self.mle_head = self.make_head()
         else:
             raise ValueError(
                 f"\nOutput heads implemented only for the following tasks: {TASKS}.\n"
             )
+
+    @nn.nowrap
+    def make_head(self):
+        """Create target task specific MLP head."""
+        if self.task == "mle":
+            assert isinstance(
+                self.num_classes, int
+            ), "\nNumber of classes in dataset required.\n"
+            head = nn.Dense(self.num_classes, name="mle_head")
+        else:
+            assert isinstance(
+                self.num_classes, int
+            ), "\nNumber of classes in dataset required.\n"
+            assert isinstance(
+                self.triplet_dim, int
+            ), "\nDimensionality of triplet head bottleneck required.\n"
+            mle_head = nn.Sequential(
+                [nn.LayerNorm(), nn.Dense(self.num_classes)], name="mle_head"
+            )
+            ooo_head = TripletHead(
+                backbone="vit",
+                triplet_dim=self.triplet_dim,
+                capture_intermediates=self.capture_intermediates,
+            )
+            return mle_head, ooo_head
         return head
 
     @nn.compact
-    def __call__(self, x: Array, train=True) -> Array:
+    def __call__(
+        self,
+        x: Array,
+        train=True,
+        current_task=None,
+    ) -> Array:
         # Preprocess input
         x = img_to_patch(x, self.patch_size)
         B, T, _ = x.shape
@@ -155,5 +158,15 @@ class ViT(nn.Module):
 
         # Perform classification prediction
         cls = x[:, 0]
-        out = self.mlp_head(cls)
+        
+        if self.task == "mle":
+            out = self.mle_head(cls)
+        else:
+            if self.capture_intermediates:
+                self.sow("intermediates", "latent_reps")
+            assert isinstance(
+                current_task, str
+            ), "\nIn MTL, current task needs to be provided.\n"
+            out = getattr(self, f"{current_task}_head")(cls)
+
         return out

@@ -72,9 +72,9 @@ class Custom(nn.Module):
             capture_intermediates=self.capture_intermediates,
         )
 
-        if self.task == 'mtl':
+        if self.task == "mtl":
             self.mle_head, self.ooo_head = self.make_head()
-        elif self.task == 'mle':
+        elif self.task == "mle":
             self.mle_head = self.make_head()
         else:
             raise ValueError(
@@ -84,7 +84,7 @@ class Custom(nn.Module):
     @nn.nowrap
     def make_head(self):
         """Create target task specific MLP head."""
-        if self.task == 'mle':
+        if self.task == "mle":
             assert isinstance(
                 self.num_classes, int
             ), "\nNumber of classes in dataset required.\n"
@@ -110,9 +110,11 @@ class Custom(nn.Module):
         x = self.encoder(x)
         if self.capture_intermediates:
             self.sow("intermediates", "latent_reps")
-        if self.task == 'mle':
+        if self.task == "mle":
             out = self.mle_head(x)
         else:
-            assert isinstance(current_task, str), '\nIn MTL, current task needs to be provided.\n'
-            out = getattr(self, f'{current_task}_head')(x)
+            assert isinstance(
+                current_task, str
+            ), "\nIn MTL, current task needs to be provided.\n"
+            out = getattr(self, f"{current_task}_head")(x)
         return out
