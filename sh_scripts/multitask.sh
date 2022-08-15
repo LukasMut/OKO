@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #$ -binding linear:4 # request 4 CPUs (8 with HT) (4 per GPU is recommended)
-#$ -N ooo_heterogeneous_pretraining
+#$ -N multitask
 #$ -q all.q
 #$ -cwd
 #$ -l cuda=1 -l gputype='A100*'
@@ -14,17 +14,16 @@ dataset='mnist';
 out_path="/home/space/OOOPretraining/results/${dataset}";
 data_path="/home/space/datasets/${dataset}/processed";
 network='Custom';
-task='mle_finetuning';
-pretraining_task='ooo_clf';
+task='mtl';
 dist='heterogeneous';
 
 sampling='uniform';
 testing='uniform';
-n_classes=10;
+n_classes=3;
 min_samples=3;
 optim='sgd';
 burnin=50;
-patience=10;
+patience=15;
 steps=40;
 
 shapes=( 0 1 2 3 4 5 );
@@ -45,9 +44,9 @@ export XLA_PYTHON_CLIENT_ALLOCATOR=platform
 logdir="./logs/${task}_pretraining/${dataset}/${network}/${dist}/$SGE_TASK_ID";
 mkdir -p $logdir;
 
-echo "Started $task pretraining $SGE_TASK_ID for $network at $(date)"
+echo "Started multi-task learning $SGE_TASK_ID for $network at $(date)"
 
-python main.py --out_path $out_path --data_path $data_path --network $network --dataset $dataset --task $task --pretraining_task $pretraining_task --distribution $dist --shapes ${shapes[@]} --samples ${samples[@]} --optim $optim --sampling $sampling --min_samples $min_samples --fine_tuning --n_classes $n_classes --batch_sizes ${batch_sizes[@]} --epochs ${epochs[@]} --etas ${etas[@]} --burnin $burnin --patience $patience --steps $steps --seeds ${seeds[@]} >> ${logdir}/${task}_${dist}_finetuning.out
+python main.py --out_path $out_path --data_path $data_path --network $network --dataset $dataset --task $task --distribution $dist --shapes ${shapes[@]} --samples ${samples[@]} --optim $optim --sampling $sampling --min_samples $min_samples --n_classes $n_classes --batch_sizes ${batch_sizes[@]} --epochs ${epochs[@]} --etas ${etas[@]} --burnin $burnin --patience $patience --steps $steps --seeds ${seeds[@]} >> ${logdir}/${task}_${dist}.out
 
-printf "Finished $task pretraining $SGE_TASK_ID for $network at $(date)\n"
+printf "Finished multi-task learning $SGE_TASK_ID for $network at $(date)\n"
 # rm -r $cuda_dir;
