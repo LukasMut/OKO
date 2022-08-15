@@ -254,17 +254,19 @@ class OOOTrainer:
             elif model_config["type"].lower() == "resnet":
                 logits, _ = getattr(utils, "rn_predict")(
                     state,
-                    state.params,
+                    state.mle_params,
                     X,
                     train=False,
+                    current_task='mle',
                 )
             elif model_config["type"].lower() == "vit":
                 logits, _ = getattr(utils, "vit_predict")(
                     state,
-                    state.params,
+                    state.mle_params,
                     rng,
                     X,
                     train=False,
+                    current_task='mle',
                 )
             return logits
 
