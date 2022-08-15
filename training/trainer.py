@@ -165,7 +165,7 @@ class OOOTrainer:
                     getattr(utils, f"mle_loss_fn_{model_config['type'].lower()}"),
                     state,
                 )
-                # create all six six permutations
+                # create all six permutations
                 perms = jax.device_put(
                     jnp.array(list(itertools.permutations(range(3), 3)))
                 )
@@ -403,13 +403,11 @@ class OOOTrainer:
 
     def save_model(self, epoch=0):
         # Save current model at certain training iteration
+        target = {"mle_params": self.state.mle_params} 
+        if self.model_config["task"] == "mtl":
+            target.update({"ooo_params": self.state.ooo_params})
         if self.model_config["type"].lower() == "resnet":
-            target = {
-                "params": self.state.params,
-                "batch_stats": self.state.batch_stats,
-            }
-        else:
-            target = self.state.mle_params
+            target.update({"batch_stats": self.state.batch_stats})    
         checkpoints.save_checkpoint(
             ckpt_dir=self.dir_config.log_dir, target=target, step=epoch, overwrite=True
         )
@@ -420,26 +418,27 @@ class OOOTrainer:
             state_dict = checkpoints.restore_checkpoint(
                 ckpt_dir=self.dir_config.log_dir, target=None
             )
-
             self.state = TrainState.create(
                 apply_fn=self.model.apply,
-                params=state_dict["params"],
+                mle_params=state_dict["mle_params"],
                 batch_stats=state_dict["batch_stats"],
                 tx=self.state.tx
                 if self.state
                 else optax.sgd(self.optimizer_config.lr, momentum=0.9),
+                ooo_params=state_dict["ooo_params"] if "ooo_params" in state_dict else None,
             )
         else:
-            params = checkpoints.restore_checkpoint(
+            state_dict = checkpoints.restore_checkpoint(
                 ckpt_dir=self.dir_config.log_dir, target=None
             )
             self.state = TrainState.create(
                 apply_fn=self.model.apply,
-                params=params,
+                mle_params=state_dict["mle_params"],
                 tx=self.state.tx
                 if self.state
-                else optax.adam(self.optimizer_config.lr),  # default ViT optimizer
+                else optax.adam(self.optimizer_config.lr),
                 batch_stats=None,
+                ooo_params=state_dict["ooo_params"] if "ooo_params" in state_dict else None,
             )
 
     def __len__(self) -> int:
