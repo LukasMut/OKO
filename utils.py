@@ -22,7 +22,7 @@ from functools import partial
 from typing import Iterator, Tuple
 from ml_collections import config_dict
 
-TASKS = ['mle', 'ooo', 'mtl']
+TASKS = ['mle', 'mtl']
 MODELS = ['Custom', 'ResNet18', 'ResNet50', 'ResNet101', 'ViT']
 
 Array = jnp.ndarray
