@@ -227,10 +227,8 @@ class DataLoader:
             yield main_batch, ooo_batch
 
     def __iter__(self) -> Iterator:
-        if self.model_config.task == 'ooo':
-            return self.ooo_batch_balancing()
-        elif self.model_config.task == 'mtl':
-            return self.ooo_mtl_batch_balancing() 
+        if self.model_config.task == 'mtl':
+            return self.ooo_mtl_batch_balancing()
         else:
             if self.data_config.sampling == "standard":
                 if self.train:
