@@ -72,11 +72,6 @@ class OOOTrainer:
 
     def init_model(self) -> None:
         """Initialise parameters (i.e., weights and biases) of neural network."""
-
-        # @jax.jit
-        def init(*args, **kwargs):
-            return self.model.init(*args, current_task=kwargs.pop('current_task'))
-
         key_i, key_j = random.split(random.PRNGKey(self.rnd_seed))
 
         if self.data_config.name.endswith("mnist"):
@@ -85,14 +80,9 @@ class OOOTrainer:
         else:
             H, W, C = self.data_config.input_dim
 
-        if self.model_config["task"].startswith("ooo"):
-            batch = random.normal(
-                key_i, shape=(int(self.data_config.batch_size * 3), H, W, C)
-            )
-        else:
-            batch = random.normal(
-                key_i, shape=(self.data_config.batch_size, H, W, C)
-            )
+        batch = random.normal(
+            key_i, shape=(self.data_config.batch_size, H, W, C)
+        )
 
         if self.model_config["type"].lower() == "resnet":
             variables = self.model.init(key_j, batch, train=True)
@@ -102,16 +92,19 @@ class OOOTrainer:
             )
         else:
             if self.model_config["type"].lower() == "vit":
-                self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
-                self.init_params = self.model.init(
-                    {"params": init_rng, "dropout": dropout_init_rng}, batch, train=True
-                )["params"]
+                for task in self.tasks:
+                    self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
+                    init_params = self.model.init(
+                        {"params": init_rng, "dropout": dropout_init_rng}, batch, train=True, current_task=task
+                    )["params"]
+                    setattr(self, f'init_{task}_params', init_params)
             else:
                 for task in self.tasks:
-                    variables = init(key_j, batch, current_task=task)
+                    variables = self.model.init(key_j, batch, current_task=task)
                     _, init_params = variables.pop("params")
                     setattr(self, f'init_{task}_params', init_params)
                     del variables
+
             self.init_batch_stats = None
         self.state = None
 
@@ -162,17 +155,7 @@ class OOOTrainer:
                 if model_config["task"].startswith("mle")
                 else model_config["task"]
             )
-            if task == "ooo":
-                # create all six six permutations
-                perms = jax.device_put(
-                    jnp.array(list(itertools.permutations(range(3), 3)))
-                )
-                loss_fn = partial(
-                    getattr(utils, f"{task}_loss_fn_{model_config['type'].lower()}"),
-                    state,
-                    perms,
-                )
-            elif task == 'mtl':
+            if task == 'mtl':
                 mle_loss_fn = partial(
                     getattr(utils, f"mle_loss_fn_{model_config['type'].lower()}"),
                     state,
@@ -222,7 +205,9 @@ class OOOTrainer:
                     )(state.params, batch, True)
                     # update parameters and batch statistics
                     state = state.apply_gradients(
-                        grads=grads, batch_stats=aux[1]["batch_stats"]
+                        grads=grads, 
+                        batch_stats=aux[1]["batch_stats"], 
+                        tasks=tasks[i],
                     )
                 else:
                     if model_config["type"].lower() == "vit":
@@ -238,13 +223,6 @@ class OOOTrainer:
                     state = state.apply_gradients(grads=grads, task=tasks[i])
                 total_loss += loss
                 accs.append(aux)
-            
-            if model_config["task"] == 'ooo':
-                # apply l2 normalization during triplet pretraining
-                state, weight_penalty = apply_l2_norm(
-                    state=state, lmbda=model_config["weight_decay"]
-                )
-                total_loss += weight_penalty
 
             return state, total_loss, accs[0]
 
@@ -270,9 +248,7 @@ class OOOTrainer:
                 )
             return logits
 
-        # jit functions for more efficiency
-        # self.train_step = jax.jit(train_step)
-        # self.eval_step = jax.jit(eval_step)
+        # initialize functions
         self.train_step = partial(train_step, self.model_config, self.tasks)
         self.inference = partial(inference, self.model_config)
         self.get_loss_fn = get_loss_fn
@@ -297,10 +273,7 @@ class OOOTrainer:
                 loss, aux = loss_fn(self.state.mle_params, batch, self.rng, False)
             else:
                 loss, aux = loss_fn(self.state.mle_params, batch)
-            if self.model_config["task"] == "ooo":
-                acc = aux[0] if isinstance(aux, tuple) else aux
-            else:
-                acc = self.compute_accuracy(batch, aux)
+            acc = self.compute_accuracy(batch, aux)
         return loss.item(), acc
 
     def compute_accuracy(self, batch, aux, cls_hits=None) -> Array:
@@ -342,17 +315,13 @@ class OOOTrainer:
                     batches=batch,
                     rng=self.rng
                 )
-                if self.model_config["task"] == "ooo":
-                    acc = aux[0] if isinstance(aux, tuple) else aux
-                    batch_accs = batch_accs.at[step].set(acc)
+                if hasattr(self, "class_hitting"):
+                    cls_hits = self.compute_accuracy(
+                        batch=batch, aux=aux, cls_hits=cls_hits
+                    )
                 else:
-                    if hasattr(self, "class_hitting"):
-                        cls_hits = self.compute_accuracy(
-                            batch=batch, aux=aux, cls_hits=cls_hits
-                        )
-                    else:
-                        acc = self.compute_accuracy(batch=batch, aux=aux)
-                        batch_accs = batch_accs.at[step].set(acc)
+                    acc = self.compute_accuracy(batch=batch, aux=aux)
+                    batch_accs = batch_accs.at[step].set(acc)
             else:
                 if hasattr(self, "class_hitting"):
                     loss, cls_hits = self.eval_step(

@@ -19,8 +19,8 @@ FrozenDict = flax.core.frozen_dict.FrozenDict
 
 
 @jax.jit
-def c_entropy(targets, logits, w=None) -> jnp.ndarray:
-    if isinstance(w, jnp.ndarray):
+def c_entropy(targets, logits, w=None) -> Array:
+    if isinstance(w, Array):
         # compute weighted version of the cross-entropy error
         targets *= w
     B = targets.shape[0]
@@ -32,20 +32,6 @@ def c_entropy(targets, logits, w=None) -> jnp.ndarray:
 def accuracy(logits: Array, targets: Array) -> Array:
     return jnp.mean(
         logits.argmax(axis=1) == jnp.nonzero(targets, size=targets.shape[0])[-1]
-    )
-
-
-@jax.jit
-def convert_labels(labels: Array) -> Array:
-    first_conversion = jnp.where(labels != 1, labels - 2, labels)
-    converted_labels = jnp.where(first_conversion < 0, 2, first_conversion)
-    return converted_labels
-
-
-def ooo_accuracy(logits: Array, targets: Array) -> Array:
-    return jnp.mean(
-        convert_labels(logits.argmax(axis=1))
-        == convert_labels(jnp.nonzero(targets, size=targets.shape[0])[-1])
     )
 
 
@@ -98,57 +84,6 @@ def inductive_bias(
     return bias
 
 
-def get_triplets(logits: Array) -> Tuple[Array]:
-    triplets = logits.reshape(-1, 3, logits.shape[-1])
-    feats_i = triplets[:, 0, :]
-    feats_j = triplets[:, 1, :]
-    feats_k = triplets[:, 2, :]
-    return (feats_i, feats_j, feats_k)
-
-
-# @jax.jit
-def get_feature_norms(feats_i: Array, feats_j: Array, feats_k: Array) -> Tuple[Array]:
-    feat_i_norms = jnp.linalg.norm(feats_i, ord=2, axis=1)
-    feat_j_norms = jnp.linalg.norm(feats_j, ord=2, axis=1)
-    feat_k_norms = jnp.linalg.norm(feats_k, ord=2, axis=1)
-    return (feat_i_norms, feat_j_norms, feat_k_norms)
-
-
-@jax.jit
-def compute_similarities(
-    feats_i: Array, feats_j: Array, feats_k: Array
-) -> Tuple[Array]:
-    """Apply the similarity function (modeled as the dot product or the cosine similarity) to each pair in the triplet."""
-    # feat_norms = get_feature_norms(feats_i, feats_j, feats_k)
-    sim_i = jnp.sum(feats_i * feats_j, axis=1)  # / (feat_norms[0] * feat_norms[1])
-    sim_j = jnp.sum(feats_i * feats_k, axis=1)  # / (feat_norms[0] * feat_norms[2])
-    sim_k = jnp.sum(feats_j * feats_k, axis=1)  # / (feat_norms[1] * feat_norms[2])
-    return jnp.stack((sim_i, sim_j, sim_k), axis=1)
-
-
-@partial(jax.jit, static_argnames=["t"])
-def logsumexp(x: Array, t: float) -> Array:
-    return jax.nn.logsumexp(a=x, b=1 / t)
-
-
-def vlog_softmax(batch_similarities: Array, y: Array, t: float = 1.0) -> Array:
-    """Vectorized log-softmax function for supervised contrastive loss computation."""
-
-    def log_softmax(t: float, triplet_similarities: Array, y_i: Array):
-        return (triplet_similarities[jnp.nonzero(y_i, size=1)[0]] / t) - logsumexp(
-            triplet_similarities, t
-        )
-
-    return vmap(partial(log_softmax, t))(batch_similarities, y)
-
-
-@jax.jit
-def cross_entropy_loss(batch_sims: Array, y: Array) -> Array:
-    """Supervised contrastive loss function."""
-    return jnp.mean(-vlog_softmax(batch_sims, y))
-
-
-# @jax.jit
 def cnn_predict(state: FrozenDict, params: FrozenDict, X: Array, current_task: str) -> Array:
     return state.apply_fn({"params": params}, X, current_task=current_task)
 
@@ -158,11 +93,13 @@ def resnet_predict(
     params: FrozenDict,
     X: Array,
     train: bool,
+    current_task: str,
 ) -> Tuple[Array, State]:
     logits, new_state = state.apply_fn(
         {"params": params, "batch_stats": state.batch_stats},
         X,
         mutable=["batch_stats"] if train else False,
+        current_task=current_task,
     )
     return logits, new_state
 
@@ -173,15 +110,19 @@ def vit_predict(
     rng: Array,
     X: Array,
     train: bool,
+    current_task: str,
 ) -> Tuple[Array, Array]:
     rng, dropout_apply_rng = random.split(rng)
     logits = state.apply_fn(
-        {"params": params}, X, train=train, rngs={"dropout": dropout_apply_rng}
+        {"params": params}, 
+        X, 
+        train=train, 
+        rngs={"dropout": dropout_apply_rng}, 
+        current_task=current_task,
     )
     return logits, rng
 
 
-# @jax.jit
 def mle_loss_fn_vit(
     state: FrozenDict,
     params: FrozenDict,
@@ -191,13 +132,18 @@ def mle_loss_fn_vit(
 ) -> Tuple[Array, Tuple[Array]]:
     """MLE loss function used during finetuning."""
     X, y = batch
-    logits, rng = vit_predict(state=state, params=params, rng=rng, X=X, train=train)
+    logits, rng = vit_predict(
+        state=state, 
+        params=params, 
+        rng=rng, 
+        X=X, 
+        train=train, 
+        current_task='mle')
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     aux = (logits, rng)
     return loss, aux
 
 
-# @jax.jit
 def mle_loss_resnet(
     state: FrozenDict,
     params: FrozenDict,
@@ -206,7 +152,8 @@ def mle_loss_resnet(
 ) -> Tuple[Array, Tuple[Array]]:
     """MLE loss function used during finetuning."""
     X, y = batch
-    logits, new_state = resnet_predict(state=state, params=params, X=X, train=train)
+    logits, new_state = resnet_predict(
+        state=state, params=params, X=X, train=train, current_task='mle')
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     aux = (logits, new_state)
     return loss, aux
@@ -224,58 +171,6 @@ def mle_loss_fn_custom(
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     return loss, logits
 
-
-@jax.jit
-def ooo_dist_loss_fn_custom(
-    state: FrozenDict,
-    params: FrozenDict,
-    batch: Tuple[Array, Array],
-) -> Tuple[Array, Tuple[Array]]:
-    """MLE loss function used during finetuning."""
-    X, y = batch
-    logits = cnn_predict(state=state, params=params, X=X, current_task='ooo')
-    feats_i, feats_j, feats_k = get_triplets(logits)
-    batch_similarities = compute_similarities(feats_i, feats_j, feats_k)
-    loss = cross_entropy_loss(batch_similarities, y)
-    probas = jax.nn.softmax(batch_similarities, axis=1)
-    return loss, probas
-
-
-# @jax.jit
-def ooo_dist_loss_fn_resnet(
-    state: FrozenDict,
-    params: FrozenDict,
-    batch: Tuple[Array, Array],
-    train: bool = True,
-) -> Tuple[Array, Tuple[Array]]:
-    """MLE loss function used during finetuning."""
-    X, y = batch
-    logits, new_state = resnet_predict(state=state, params=params, X=X, train=train)
-    feats_i, feats_j, feats_k = get_triplets(logits)
-    batch_similarities = compute_similarities(feats_i, feats_j, feats_k)
-    loss = cross_entropy_loss(batch_similarities, y)
-    probas = jax.nn.softmax(batch_similarities, axis=1)
-    aux = (probas, new_state)
-    return loss, aux
-
-
-# @jax.jit
-def ooo_dist_loss_fn_vit(
-    state: FrozenDict,
-    params: FrozenDict,
-    batch: Tuple[Array, Array],
-    rng=None,
-    train: bool = True,
-) -> Tuple[Array, Tuple[Array]]:
-    """MLE loss function used during finetuning."""
-    X, y = batch
-    logits, rng = vit_predict(state=state, params=params, rng=rng, X=X, train=train)
-    feats_i, feats_j, feats_k = get_triplets(logits)
-    batch_similarities = compute_similarities(feats_i, feats_j, feats_k)
-    loss = cross_entropy_loss(batch_similarities, y)
-    probas = jax.nn.softmax(batch_similarities, axis=1)
-    aux = (probas, rng)
-    return loss, aux
 
 
 @jax.jit
@@ -302,7 +197,7 @@ def ooo_clf_loss_fn_custom(
     # TODO: investigate whether two or three permutations work better
     # NOTE: more than two or three permutations are computationally too expensive
     positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=2, replace=False)
+        np.random.choice(np.arange(perms.shape[0]), size=3, replace=False)
     )
     logits, y_perms = vmap(partial(cnn_symmetrize, state, params, batch))(
         perms[positions]
@@ -324,12 +219,11 @@ def resnet_symmetrize(
     triplet_perm = X[:, p, :, :, :]
     triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
     logits, new_state = resnet_predict(
-        state=state, params=params, X=triplet_perm, train=train
+        state=state, params=params, X=triplet_perm, train=train, current_task='ooo'
     )
     return logits, y[:, p], new_state
 
 
-# @jax.jit
 def ooo_clf_loss_fn_resnet(
     state: FrozenDict,
     perms: Array,
@@ -341,7 +235,7 @@ def ooo_clf_loss_fn_resnet(
     # TODO: investigate whether two or three permutations work better
     # NOTE: more than two or three permutations are computationally too expensive
     positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=2, replace=False)
+        np.random.choice(np.arange(perms.shape[0]), size=3, replace=False)
     )
     logits, y_perms, new_state = vmap(
         partial(resnet_symmetrize, state, params, batch, train)
@@ -365,12 +259,16 @@ def vit_symmetrize(
     triplet_perm = X[:, p, :, :, :]
     triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
     logits, rng = vit_predict(
-        state=state, params=params, rng=rng, X=triplet_perm, train=train
+        state=state, 
+        params=params, 
+        rng=rng, 
+        X=triplet_perm, 
+        train=train, 
+        current_task='ooo',
     )
     return logits, y[:, p], rng
 
 
-# @jax.jit
 def ooo_clf_loss_fn_vit(
     state: FrozenDict,
     perms: Array,
@@ -383,12 +281,12 @@ def ooo_clf_loss_fn_vit(
     # TODO: investigate whether two or three permutations work better
     # NOTE: more than two or three permutations are computationally too expensive
     positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=2, replace=False)
+        np.random.choice(np.arange(perms.shape[0]), size=3, replace=False)
     )
     logits, y_perms, rng = vmap(
         partial(vit_symmetrize, state, params, batch, rng, train)
     )(perms[positions])
     loss = permutation_centropy(logits=logits, y_perms=y_perms)
     acc = permutation_accuracy(logits=logits, y_perms=y_perms)
-    aux = (acc, rng)
+    aux = (acc, rng[0])
     return loss, aux

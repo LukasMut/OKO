@@ -126,7 +126,7 @@ class ResNet(nn.Module):
         return head
 
     @nn.compact
-    def __call__(self, x: Array, current_task=None, train: bool = True) -> Array:
+    def __call__(self, x: Array, train: bool = True, current_task=None) -> Array:
         conv = partial(self.conv, use_bias=False, dtype=self.dtype)
         norm = partial(
             nn.BatchNorm,
