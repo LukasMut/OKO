@@ -84,8 +84,8 @@ def inductive_bias(
     return bias
 
 
-def cnn_predict(state: FrozenDict, params: FrozenDict, X: Array, current_task: str) -> Array:
-    return state.apply_fn({"params": params}, X, current_task=current_task)
+def cnn_predict(state: FrozenDict, params: FrozenDict, X: Array, task: str) -> Array:
+    return state.apply_fn({"params": params}, X, task=task)
 
 
 def resnet_predict(
@@ -93,13 +93,13 @@ def resnet_predict(
     params: FrozenDict,
     X: Array,
     train: bool,
-    current_task: str,
+    task: str,
 ) -> Tuple[Array, State]:
     logits, new_state = state.apply_fn(
         {"params": params, "batch_stats": state.batch_stats},
         X,
         mutable=["batch_stats"] if train else False,
-        current_task=current_task,
+        task=task,
     )
     return logits, new_state
 
@@ -110,7 +110,7 @@ def vit_predict(
     rng: Array,
     X: Array,
     train: bool,
-    current_task: str,
+    task: str,
 ) -> Tuple[Array, Array]:
     rng, dropout_apply_rng = random.split(rng)
     logits = state.apply_fn(
@@ -118,7 +118,7 @@ def vit_predict(
         X, 
         train=train, 
         rngs={"dropout": dropout_apply_rng}, 
-        current_task=current_task,
+        task=task,
     )
     return logits, rng
 
@@ -138,13 +138,13 @@ def mle_loss_fn_vit(
         rng=rng, 
         X=X, 
         train=train, 
-        current_task='mle')
+        task='mle')
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     aux = (logits, rng)
     return loss, aux
 
 
-def mle_loss_resnet(
+def mle_loss_fn_resnet(
     state: FrozenDict,
     params: FrozenDict,
     batch: Tuple[Array, Array],
@@ -153,7 +153,7 @@ def mle_loss_resnet(
     """MLE loss function used during finetuning."""
     X, y = batch
     logits, new_state = resnet_predict(
-        state=state, params=params, X=X, train=train, current_task='mle')
+        state=state, params=params, X=X, train=train, task='mle')
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     aux = (logits, new_state)
     return loss, aux
@@ -167,7 +167,7 @@ def mle_loss_fn_custom(
 ) -> Tuple[Array, Tuple[Array]]:
     """MLE loss function used during finetuning."""
     X, y = batch
-    logits = cnn_predict(state=state, params=params, X=X, current_task='mle')
+    logits = cnn_predict(state=state, params=params, X=X, task='mle')
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     return loss, logits
 
@@ -182,7 +182,7 @@ def cnn_symmetrize(
     X, y = batch
     triplet_perm = X[:, p, :, :, :]
     triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
-    logits = cnn_predict(state, params, triplet_perm, current_task='ooo')
+    logits = cnn_predict(state, params, triplet_perm, task='ooo')
     return logits, y[:, p]
 
 
@@ -219,7 +219,7 @@ def resnet_symmetrize(
     triplet_perm = X[:, p, :, :, :]
     triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
     logits, new_state = resnet_predict(
-        state=state, params=params, X=triplet_perm, train=train, current_task='ooo'
+        state=state, params=params, X=triplet_perm, train=train, task='ooo'
     )
     return logits, y[:, p], new_state
 
@@ -264,7 +264,7 @@ def vit_symmetrize(
         rng=rng, 
         X=triplet_perm, 
         train=train, 
-        current_task='ooo',
+        task='ooo',
     )
     return logits, y[:, p], rng
 

@@ -195,7 +195,7 @@ def create_model(*, model_cls, model_config):
     model = model_cls(
         num_classes=model_config.n_classes,
         task=model_config.task,
-        triplet_dim=512 if model_config.task == "ooo_clf" else None,
+        triplet_dim=512 if model_config.task == "mtl" else None,
         dtype=model_dtype,
     )
     return model

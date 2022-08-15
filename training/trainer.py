@@ -45,15 +45,15 @@ class OOOTrainer:
         self.rng = jax.random.PRNGKey(self.rnd_seed)
         # freeze model config dictionary (i.e., make it immutable)
         self.model_config = FrozenDict(self.model_config)
-        
-        if self.model_config["task"] == 'mtl':
-            self.tasks = ['mle', 'ooo']
+
+        if self.model_config["task"] == "mtl":
+            self.tasks = ["mle", "ooo"]
         else:
             self.tasks = self.model_config.task
-        
+
         # inititalize model
         self.init_model()
-        
+
         self.logger = SummaryWriter(log_dir=self.dir_config.log_dir)
         self.early_stop = EarlyStopping(
             min_delta=1e-4, patience=self.optimizer_config.patience
@@ -63,7 +63,6 @@ class OOOTrainer:
         if (
             self.data_config.distribution == "heterogeneous"
             and self.data_config.alpha >= float(0)
-            and self.model_config["task"] in ["mle", "mtl"]
         ):
             self.class_hitting = True
 
@@ -80,31 +79,33 @@ class OOOTrainer:
         else:
             H, W, C = self.data_config.input_dim
 
-        batch = random.normal(
-            key_i, shape=(self.data_config.batch_size, H, W, C)
-        )
+        batch = random.normal(key_i, shape=(self.data_config.batch_size, H, W, C))
 
         if self.model_config["type"].lower() == "resnet":
-            variables = self.model.init(key_j, batch, train=True)
-            self.init_params, self.init_batch_stats = (
-                variables["params"],
-                variables["batch_stats"],
-            )
+            for task in self.tasks:
+                variables = self.model.init(key_j, batch, train=True, task=task)
+                init_params, self.init_batch_stats = (
+                    variables["params"],
+                    variables["batch_stats"],
+                )
+                setattr(self, f"init_{task}_params", init_params)
         else:
             if self.model_config["type"].lower() == "vit":
                 for task in self.tasks:
                     self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
                     init_params = self.model.init(
-                        {"params": init_rng, "dropout": dropout_init_rng}, batch, train=True, current_task=task
+                        {"params": init_rng, "dropout": dropout_init_rng},
+                        batch,
+                        train=True,
+                        task=task,
                     )["params"]
-                    setattr(self, f'init_{task}_params', init_params)
+                    setattr(self, f"init_{task}_params", init_params)
             else:
                 for task in self.tasks:
-                    variables = self.model.init(key_j, batch, current_task=task)
+                    variables = self.model.init(key_j, batch, task=task)
                     _, init_params = variables.pop("params")
-                    setattr(self, f'init_{task}_params', init_params)
+                    setattr(self, f"init_{task}_params", init_params)
                     del variables
-
             self.init_batch_stats = None
         self.state = None
 
@@ -138,13 +139,17 @@ class OOOTrainer:
         # initialize training state
         self.state = TrainState.create(
             apply_fn=self.model.apply,
-            params=self.init_mle_params, # if self.state is None else self.state.params,
+            params=self.init_mle_params
+            if self.state is None
+            else self.state.mle_params,
             batch_stats=self.init_batch_stats
             if self.state is None
             else self.state.batch_stats,
             tx=optimizer,
-            task=self.model_config['task'],
-            ooo_params=self.init_ooo_params,
+            task=self.model_config["task"],
+            ooo_params=self.init_ooo_params
+            if self.state is None
+            else self.state.ooo_params,
         )
 
     def create_functions(self) -> None:
@@ -155,7 +160,7 @@ class OOOTrainer:
                 if model_config["task"].startswith("mle")
                 else model_config["task"]
             )
-            if task == 'mtl':
+            if task == "mtl":
                 mle_loss_fn = partial(
                     getattr(utils, f"mle_loss_fn_{model_config['type'].lower()}"),
                     state,
@@ -177,14 +182,7 @@ class OOOTrainer:
                     getattr(utils, f"{task}_loss_fn_{model_config['type'].lower()}"),
                     state,
                 )
-            return (loss_fn)
-
-        def apply_l2_norm(state: Any, lmbda: float) -> Tuple[Any, Array]:
-            weight_penalty, grads = jax.value_and_grad(
-                utils.l2_reg, argnums=0, has_aux=False
-            )(state.params, lmbda)
-            state = state.apply_gradients(grads=grads)
-            return state, weight_penalty
+            return loss_fn
 
         def train_step(
             model_config,
@@ -193,7 +191,11 @@ class OOOTrainer:
             batches,
             rng=None,
         ):
-            loss_funs = get_loss_fn(state, model_config, train=True if model_config["task"] == 'mtl' else False)
+            loss_funs = get_loss_fn(
+                state,
+                model_config,
+                train=True if model_config["task"] == "mtl" else False,
+            )
             total_loss = 0
             accs = []
             for i, loss_fn in enumerate(loss_funs):
@@ -202,23 +204,23 @@ class OOOTrainer:
                 if model_config["type"].lower() == "resnet":
                     (loss, aux), grads = jax.value_and_grad(
                         loss_fn, argnums=0, has_aux=True
-                    )(state.params, batch, True)
+                    )(getattr(state, f"{tasks[i]}_params"), batch, True)
                     # update parameters and batch statistics
                     state = state.apply_gradients(
-                        grads=grads, 
-                        batch_stats=aux[1]["batch_stats"], 
-                        tasks=tasks[i],
+                        grads=grads,
+                        batch_stats=aux[1]["batch_stats"],
+                        task=tasks[i],
                     )
                 else:
                     if model_config["type"].lower() == "vit":
                         (loss, aux), grads = jax.value_and_grad(
                             loss_fn, argnums=0, has_aux=True
-                        )(getattr(state, f'{tasks[i]}_params'), batch, rng, True)
+                        )(getattr(state, f"{tasks[i]}_params"), batch, rng, True)
                         self.rng = aux[1]
                     else:
                         (loss, aux), grads = jax.value_and_grad(
                             loss_fn, argnums=0, has_aux=True
-                        )(getattr(state, f'{tasks[i]}_params'), batch)
+                        )(getattr(state, f"{tasks[i]}_params"), batch)
                     # update parameters
                     state = state.apply_gradients(grads=grads, task=tasks[i])
                 total_loss += loss
@@ -228,23 +230,28 @@ class OOOTrainer:
 
         def inference(model_config, state, X, rng=None) -> Array:
             if model_config["type"].lower() == "custom":
-                logits = getattr(utils, "cnn_predict")(state, state.mle_params, X, current_task='mle')
+                logits = getattr(utils, "cnn_predict")(
+                    state=state,
+                    params=state.mle_params,
+                    X=X,
+                    task="mle",
+                )
             elif model_config["type"].lower() == "resnet":
                 logits, _ = getattr(utils, "rn_predict")(
-                    state,
-                    state.mle_params,
-                    X,
+                    state=state,
+                    params=state.mle_params,
+                    X=X,
                     train=False,
-                    current_task='mle',
+                    task="mle",
                 )
             elif model_config["type"].lower() == "vit":
                 logits, _ = getattr(utils, "vit_predict")(
-                    state,
-                    state.mle_params,
-                    rng,
-                    X,
+                    state=state,
+                    params=state.mle_params,
+                    rng=rng,
+                    X=X,
                     train=False,
-                    current_task='mle',
+                    task="mle",
                 )
             return logits
 
@@ -311,9 +318,7 @@ class OOOTrainer:
         for step, batch in enumerate(batches):
             if train:
                 self.state, loss, aux = self.train_step(
-                    state=self.state,
-                    batches=batch,
-                    rng=self.rng
+                    state=self.state, batches=batch, rng=self.rng
                 )
                 if hasattr(self, "class_hitting"):
                     cls_hits = self.compute_accuracy(

@@ -106,7 +106,7 @@ class Custom(nn.Module):
         return head
 
     @nn.compact
-    def __call__(self, x: Array, current_task=None) -> Array:
+    def __call__(self, x: Array, task=None) -> Array:
         x = self.encoder(x)
         if self.capture_intermediates:
             self.sow("intermediates", "latent_reps")
@@ -114,7 +114,7 @@ class Custom(nn.Module):
             out = self.mle_head(x)
         else:
             assert isinstance(
-                current_task, str
+                task, str
             ), "\nIn MTL, current task needs to be provided.\n"
-            out = getattr(self, f"{current_task}_head")(x)
+            out = getattr(self, f"{task}_head")(x)
         return out

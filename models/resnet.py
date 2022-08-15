@@ -108,7 +108,7 @@ class ResNet(nn.Module):
             assert isinstance(
                 self.num_classes, int
             ), "\nNumber of classes in dataset required.\n"
-            head = nn.Dense(self.num_classes, name="mle_head")
+            head = nn.Dense(self.num_classes, name="mlp_head")
         else:
             assert isinstance(
                 self.num_classes, int
@@ -116,7 +116,7 @@ class ResNet(nn.Module):
             assert isinstance(
                 self.triplet_dim, int
             ), "\nDimensionality of triplet head bottleneck required.\n"
-            mle_head = nn.Dense(self.num_classes, name="mle_head")
+            mle_head = nn.Dense(self.num_classes)
             ooo_head = TripletHead(
                 backbone="resnet",
                 triplet_dim=self.triplet_dim,
@@ -126,7 +126,7 @@ class ResNet(nn.Module):
         return head
 
     @nn.compact
-    def __call__(self, x: Array, train: bool = True, current_task=None) -> Array:
+    def __call__(self, x: Array, train: bool = True, task=None) -> Array:
         conv = partial(self.conv, use_bias=False, dtype=self.dtype)
         norm = partial(
             nn.BatchNorm,
@@ -159,9 +159,9 @@ class ResNet(nn.Module):
             if self.capture_intermediates:
                 self.sow("intermediates", "latent_reps")
             assert isinstance(
-                current_task, str
+                task, str
             ), "\nIn MTL, current task needs to be provided.\n"
-            out = getattr(self, f"{current_task}_head")(x)
+            out = getattr(self, f"{task}_head")(x)
         out = jnp.asarray(out, self.dtype)
         return out
 

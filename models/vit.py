@@ -139,7 +139,7 @@ class ViT(nn.Module):
         self,
         x: Array,
         train=True,
-        current_task=None,
+        task=None,
     ) -> Array:
         # Preprocess input
         x = img_to_patch(x, self.patch_size)
@@ -165,8 +165,8 @@ class ViT(nn.Module):
             if self.capture_intermediates:
                 self.sow("intermediates", "latent_reps")
             assert isinstance(
-                current_task, str
+                task, str
             ), "\nIn MTL, current task needs to be provided.\n"
-            out = getattr(self, f"{current_task}_head")(cls)
+            out = getattr(self, f"{task}_head")(cls)
 
         return out

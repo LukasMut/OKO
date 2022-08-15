@@ -65,8 +65,6 @@ def parseargs():
         help='how to sample mini-batches per iteration')
     aa('--min_samples', type=int, default=None,
         help='minimum number of samples per class')
-    aa('--max_triplets', type=int, default=None,
-        help='maximum number of triplets in self-supervised pretraining')
     aa('--testing', type=str, default='uniform',
         choices=['uniform', 'heterogeneous'],
         help='whether class prior probability at test time should be uniform or similar to training')

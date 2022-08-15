@@ -38,12 +38,6 @@ def get_configs(args, **kwargs):
     model_config.n_classes = args.n_classes
     model_config.task = args.task
 
-    if model_config.task == 'ooo':
-        # l2 regularization during pretraining
-        model_config.weight_decay = 1e-3
-        # maximum number of sampled triplets
-        data_config.max_triplets = args.max_triplets
-
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
 
