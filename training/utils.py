@@ -187,7 +187,7 @@ def cnn_symmetrize(
 
 
 @jax.jit
-def ooo_clf_loss_fn_custom(
+def ooo_loss_fn_custom(
     state: FrozenDict,
     perms: Array,
     params: FrozenDict,
@@ -224,7 +224,7 @@ def resnet_symmetrize(
     return logits, y[:, p], new_state
 
 
-def ooo_clf_loss_fn_resnet(
+def ooo_loss_fn_resnet(
     state: FrozenDict,
     perms: Array,
     params: FrozenDict,
@@ -269,7 +269,7 @@ def vit_symmetrize(
     return logits, y[:, p], rng
 
 
-def ooo_clf_loss_fn_vit(
+def ooo_loss_fn_vit(
     state: FrozenDict,
     perms: Array,
     params: FrozenDict,

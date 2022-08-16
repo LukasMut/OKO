@@ -6,19 +6,17 @@ __all__ = ["DataLoader"]
 import copy
 import math
 import random
-import jax
-
-import numpy as np
-import jax.numpy as jnp
-import haiku as hk
-
-from ml_collections import config_dict
 from dataclasses import dataclass
-from einops import rearrange
-from jax import vmap
 from functools import partial
 from typing import Any, Iterator, List, Tuple
 
+import haiku as hk
+import jax
+import jax.numpy as jnp
+import numpy as np
+from einops import rearrange
+from jax import vmap
+from ml_collections import config_dict
 
 Array = Any
 FrozenDict = config_dict.FrozenConfigDict
@@ -36,8 +34,7 @@ class DataLoader:
     def __post_init__(self):
         self.cpu_devices = jax.devices("cpu")
         self.num_gpus = 2
-        self.device_num = random.choices(
-            range(self.num_gpus))[0]
+        self.device_num = random.choices(range(self.num_gpus))[0]
         self.X = self.data[0]
         self.class_subset = copy.deepcopy(self.class_subset)
         # seed random number generator
@@ -47,31 +44,23 @@ class DataLoader:
         if self.data_config.name.endswith("mnist"):
             self.X = jnp.expand_dims(self.X, axis=-1)
 
-        if self.model_config.task == 'mtl':
+        if self.model_config.task == "mtl":
             self.y = copy.deepcopy(self.data[1])
-            self.dataset = list(zip(self.X, self.y)) 
+            self.dataset = list(zip(self.X, self.y))
             self.rng_seq = hk.PRNGSequence(self.seed)
             self.y_prime = jnp.nonzero(self.data[1])[-1]
             self.ooo_classes = np.unique(self.y_prime)
-            self.n_batches = math.ceil(
-                len(self.dataset) / self.data_config.batch_size
-            )
+            self.ooo_batch_size = self.data_config.batch_size  # * 2
+            self.n_batches = math.ceil(len(self.dataset) / self.ooo_batch_size)
             num_classes = self.y.shape[-1]
             self.y_flat = np.nonzero(self.data[1])[1]
             self.main_classes = np.arange(num_classes)
 
-        elif self.model_config.task == 'ooo':
-            self.rng_seq = hk.PRNGSequence(self.seed)
-            self.y_prime = jnp.nonzero(self.data[1])[-1]
-            self.ooo_classes = np.unique(self.y_prime)
-            self.n_batches = math.ceil(
-                self.data_config.max_triplets / self.data_config.batch_size
-            )
-        
-        elif self.model_config.task == 'mle':
+        else:
             self.y = copy.deepcopy(self.data[1])
             self.dataset = list(zip(self.X, self.y))
-            self.n_batches = math.ceil(len(self.dataset) / self.data_config.batch_size)
+            self.main_batch_size = self.data_config.batch_size
+            self.n_batches = math.ceil(len(self.dataset) / self.main_batch_size)
 
             if self.data_config.sampling == "uniform":
                 num_classes = self.y.shape[-1]
@@ -81,7 +70,7 @@ class DataLoader:
                 else:
                     self.main_classes = np.arange(num_classes)
             else:
-                self.remainder = len(self.dataset) % self.data_config.batch_size
+                self.remainder = len(self.dataset) % self.main_batch_size
 
         self.create_functions()
 
@@ -95,7 +84,7 @@ class DataLoader:
         def sample_pairs(seed: int) -> Array:
             """Sample pairs of objects from the same class."""
             key = jax.random.PRNGKey(seed)
-            keys = jax.random.split(key, num=self.data_config.batch_size)
+            keys = jax.random.split(key, num=self.ooo_batch_size)
 
             def sample_pair(classes, key):
                 return jax.random.choice(key, classes, shape=(2,), replace=False)
@@ -127,25 +116,23 @@ class DataLoader:
             y = jnp.stack(y, axis=0)
             return (X, y)
 
-        # create jitted versions of the functions defined above
+        # jit functions for computational efficiency
         self.sample_pairs = sample_pairs
         self.label_smoothing = label_smoothing
+        self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
-        if self.model_config.task in ['mle', 'mtl']:
-            self.unzip_pairs = partial(unzip_pairs, self.dataset)
-
-    def stepping(self, random_order: Array) -> Iterator:
+    def stepping(self, random_order: Array) -> Tuple[Array, Array]:
         """Step over the entire training data in mini-batches of size B."""
         for i in range(self.n_batches):
             if self.remainder != 0 and i == int(self.n_batches - 1):
                 subset = range(
-                    i * self.data_config.batch_size,
-                    i * self.data_config.batch_size + self.remainder,
+                    i * self.main_batch_size,
+                    i * self.main_batch_size + self.remainder,
                 )
             else:
                 subset = range(
-                    i * self.data_config.batch_size,
-                    (i + 1) * self.data_config.batch_size,
+                    i * self.main_batch_size,
+                    (i + 1) * self.main_batch_size,
                 )
             X, y = self.unzip_pairs(
                 subset=subset,
@@ -183,11 +170,9 @@ class DataLoader:
         converted_labels = jnp.where(first_conversion < 0, last_idx, first_conversion)
         return converted_labels
 
-    def sample_main_batch(self):
-        sample = np.random.choice(self.main_classes, size=self.data_config.batch_size)
-        subset = [
-            np.random.choice(np.where(self.y_flat == cls)[0]) for cls in sample
-        ]
+    def sample_main_batch(self) -> Tuple[Array, Array]:
+        sample = np.random.choice(self.main_classes, size=self.main_batch_size)
+        subset = [np.random.choice(np.where(self.y_flat == cls)[0]) for cls in sample]
         X, y = self.unzip_pairs(
             subset=subset,
             sampling=self.data_config.sampling,
@@ -195,7 +180,7 @@ class DataLoader:
         )
         return (X, y)
 
-    def sample_ooo_batch(self):
+    def sample_ooo_batch(self) -> Tuple[Array, Array]:
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         pairs_subset = self.sample_pairs(seed)
         triplet_subset, ooo_subset = self.expand(pairs_subset)
@@ -209,25 +194,22 @@ class DataLoader:
         y = jax.device_put(y)
         return (X, y)
 
-    def main_batch_balancing(self) -> Iterator:
+    def main_batch_balancing(self) -> Tuple[Array, Array]:
         """Sample classes uniformly for each randomly sampled mini-batch."""
         for _ in range(self.n_batches):
             main_batch = self.sample_main_batch()
             yield main_batch
 
-    def ooo_batch_balancing(self) -> Iterator:
-        for _ in range(self.n_batches):
-            ooo_batch = self.sample_ooo_batch()
-            yield ooo_batch
-
-    def ooo_mtl_batch_balancing(self):
+    def ooo_mtl_batch_balancing(
+        self,
+    ) -> Tuple[Tuple[Array, Array], Tuple[Array, Array]]:
         for _ in range(self.n_batches):
             ooo_batch = self.sample_ooo_batch()
             main_batch = self.sample_main_batch()
             yield main_batch, ooo_batch
 
     def __iter__(self) -> Iterator:
-        if self.model_config.task == 'mtl':
+        if self.model_config.task == "mtl":
             return self.ooo_mtl_batch_balancing()
         else:
             if self.data_config.sampling == "standard":

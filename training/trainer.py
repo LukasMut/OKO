@@ -25,7 +25,7 @@ from tqdm.auto import tqdm
 import training.utils as utils
 from training.train_state import TrainState
 
-Array = Any
+Array = jnp.ndarray
 Model = Any
 
 
@@ -153,34 +153,48 @@ class OOOTrainer:
         )
 
     def create_functions(self) -> None:
-        def get_loss_fn(state, model_config: FrozenDict, train=None) -> Callable:
-            """Get task and model specific loss function."""
-            task = (
-                "mle"
-                if model_config["task"].startswith("mle")
-                else model_config["task"]
-            )
-            if task == "mtl":
-                mle_loss_fn = partial(
-                    getattr(utils, f"mle_loss_fn_{model_config['type'].lower()}"),
-                    state,
-                )
-                # create all six permutations
+
+        def init_loss_fn(
+            model_config: FrozenDict, state: Any, task: str
+            ) -> Any:
+            if task == 'ooo':
+                # create all six permutations of positions
                 perms = jax.device_put(
                     jnp.array(list(itertools.permutations(range(3), 3)))
                 )
-                ooo_loss_fn = partial(
-                    getattr(utils, f"ooo_clf_loss_fn_{model_config['type'].lower()}"),
+                loss_fn = partial(
+                    getattr(utils, f"{task}_loss_fn_{model_config['type'].lower()}"),
                     state,
                     perms,
+                )
+            else:
+                loss_fn = partial(
+                    getattr(utils, f"{task}_loss_fn_{model_config['type'].lower()}"),
+                    state,
+                )
+            return loss_fn
+
+        def get_loss_fn(state, model_config: FrozenDict, train=None) -> Callable:
+            """Get task and model specific loss function."""
+            if model_config["task"] == "mtl":
+                mle_loss_fn = init_loss_fn(
+                    model_config=model_config,
+                    state=state,
+                    task='mle'
+                )
+                ooo_loss_fn = init_loss_fn(
+                    model_config=model_config,
+                    state=state,
+                    task='ooo',
                 )
                 if train:
                     return (mle_loss_fn, ooo_loss_fn)
                 return mle_loss_fn
             else:
-                loss_fn = partial(
-                    getattr(utils, f"{task}_loss_fn_{model_config['type'].lower()}"),
-                    state,
+                loss_fn = init_loss_fn(
+                    model_config=model_config,
+                    state=state,
+                    task='mle'
                 )
             return loss_fn
 
@@ -226,6 +240,7 @@ class OOOTrainer:
                 total_loss += loss
                 accs.append(aux)
 
+            # print(f'\nOdd-one-out accuracy: {accs[1]}\n')
             return state, total_loss, accs[0]
 
         def inference(model_config, state, X, rng=None) -> Array:
@@ -256,8 +271,10 @@ class OOOTrainer:
             return logits
 
         # initialize functions
-        self.train_step = partial(train_step, self.model_config, self.tasks)
-        self.inference = partial(inference, self.model_config)
+        self.train_step = partial(
+            train_step, self.model_config, self.tasks)
+        self.inference = partial(
+            inference, self.model_config)
         self.get_loss_fn = get_loss_fn
 
     def eval_step(self, batch: Tuple[Array], cls_hits=None):
