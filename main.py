@@ -4,17 +4,17 @@
 import argparse
 import os
 import random
-import jax
-import torch
-import utils
-import train
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import tensorflow as tf
-
-from config import get_configs
+import torch
 from einops import rearrange
+
+import train
+import utils
+from config import get_configs
 
 os.environ['PYTHONIOENCODING'] = "UTF-8"
 os.environ['JAX_PLATFORM_NAME'] = "gpu"
