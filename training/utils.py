@@ -114,10 +114,10 @@ def vit_predict(
 ) -> Tuple[Array, Array]:
     rng, dropout_apply_rng = random.split(rng)
     logits = state.apply_fn(
-        {"params": params}, 
-        X, 
-        train=train, 
-        rngs={"dropout": dropout_apply_rng}, 
+        {"params": params},
+        X,
+        train=train,
+        rngs={"dropout": dropout_apply_rng},
         task=task,
     )
     return logits, rng
@@ -133,12 +133,8 @@ def mle_loss_fn_vit(
     """MLE loss function used during finetuning."""
     X, y = batch
     logits, rng = vit_predict(
-        state=state, 
-        params=params, 
-        rng=rng, 
-        X=X, 
-        train=train, 
-        task='mle')
+        state=state, params=params, rng=rng, X=X, train=train, task="mle"
+    )
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     aux = (logits, rng)
     return loss, aux
@@ -153,7 +149,8 @@ def mle_loss_fn_resnet(
     """MLE loss function used during finetuning."""
     X, y = batch
     logits, new_state = resnet_predict(
-        state=state, params=params, X=X, train=train, task='mle')
+        state=state, params=params, X=X, train=train, task="mle"
+    )
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     aux = (logits, new_state)
     return loss, aux
@@ -167,10 +164,9 @@ def mle_loss_fn_custom(
 ) -> Tuple[Array, Tuple[Array]]:
     """MLE loss function used during finetuning."""
     X, y = batch
-    logits = cnn_predict(state=state, params=params, X=X, task='mle')
+    logits = cnn_predict(state=state, params=params, X=X, task="mle")
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     return loss, logits
-
 
 
 @jax.jit
@@ -182,7 +178,7 @@ def cnn_symmetrize(
     X, y = batch
     triplet_perm = X[:, p, :, :, :]
     triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
-    logits = cnn_predict(state, params, triplet_perm, task='ooo')
+    logits = cnn_predict(state, params, triplet_perm, task="ooo")
     return logits, y[:, p]
 
 
@@ -219,7 +215,7 @@ def resnet_symmetrize(
     triplet_perm = X[:, p, :, :, :]
     triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
     logits, new_state = resnet_predict(
-        state=state, params=params, X=triplet_perm, train=train, task='ooo'
+        state=state, params=params, X=triplet_perm, train=train, task="ooo"
     )
     return logits, y[:, p], new_state
 
@@ -259,12 +255,12 @@ def vit_symmetrize(
     triplet_perm = X[:, p, :, :, :]
     triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
     logits, rng = vit_predict(
-        state=state, 
-        params=params, 
-        rng=rng, 
-        X=triplet_perm, 
-        train=train, 
-        task='ooo',
+        state=state,
+        params=params,
+        rng=rng,
+        X=triplet_perm,
+        train=train,
+        task="ooo",
     )
     return logits, y[:, p], rng
 

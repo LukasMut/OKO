@@ -4,9 +4,8 @@
 import itertools
 import os
 import pickle
-import re
 from collections import Counter, defaultdict
-from typing import Dict, Iterator, List, Tuple
+from typing import List, Tuple
 
 import flax
 import jax
@@ -16,7 +15,7 @@ from ml_collections import config_dict
 
 import models
 import utils
-from data_loader import DataLoader
+from data import DataLoader
 from training import OOOTrainer
 
 Array = np.ndarray

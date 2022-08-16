@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-__all__ = ["FewShotPartitioner"]
+__all__ = ["DataPartitioner"]
 
 import h5py
 import os
@@ -26,7 +26,7 @@ Array = jnp.ndarray
 
 
 @dataclass
-class FewShotPartitioner:
+class DataPartitioner:
     dataset: str
     data_path: str
     n_samples: int
