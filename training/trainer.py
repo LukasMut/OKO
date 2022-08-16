@@ -314,8 +314,8 @@ class OOOTrainer:
         else:
             batch_accs = jnp.zeros(len(batches))
         batch_losses = jnp.zeros(len(batches))
-        # for step, batch in tqdm(enumerate(batches), desc="Training", leave=False):
-        for step, batch in enumerate(batches):
+        # for step, batch in enumerate(batches):
+        for step, batch in tqdm(enumerate(batches), desc="Training", leave=False):
             if train:
                 self.state, loss, aux = self.train_step(
                     state=self.state, batches=batch, rng=self.rng
