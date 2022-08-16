@@ -18,7 +18,7 @@ from einops import rearrange
 from jax import vmap
 from ml_collections import config_dict
 
-Array = Any
+Array = jnp.ndarray
 FrozenDict = config_dict.FrozenConfigDict
 
 
@@ -45,7 +45,7 @@ class DataLoader:
             self.X = jnp.expand_dims(self.X, axis=-1)
 
         if self.model_config.task == "mtl":
-            # variables for main classification task 
+            # variables for main classification task
             self.y = copy.deepcopy(self.data[1])
             self.dataset = list(zip(self.X, self.y))
             self.main_batch_size = self.data_config.batch_size
@@ -57,7 +57,7 @@ class DataLoader:
             self.y_prime = jnp.nonzero(self.data[1])[-1]
             self.ooo_classes = np.unique(self.y_prime)
             # TODO: figure out whether it's useful to use larger batch sizes for the odd-one-out task
-            self.ooo_batch_size = self.data_config.batch_size # * 2
+            self.ooo_batch_size = self.data_config.batch_size  # * 2
             self.num_batches = math.ceil(len(self.dataset) / self.main_batch_size)
         else:
             # variables for main classification task
