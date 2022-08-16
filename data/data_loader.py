@@ -45,26 +45,31 @@ class DataLoader:
             self.X = jnp.expand_dims(self.X, axis=-1)
 
         if self.model_config.task == "mtl":
-            self.y = copy.deepcopy(self.data[1])
-            self.dataset = list(zip(self.X, self.y))
-            self.rng_seq = hk.PRNGSequence(self.seed)
-            self.y_prime = jnp.nonzero(self.data[1])[-1]
-            self.ooo_classes = np.unique(self.y_prime)
-            self.ooo_batch_size = self.data_config.batch_size  # * 2
-            self.n_batches = math.ceil(len(self.dataset) / self.ooo_batch_size)
-            num_classes = self.y.shape[-1]
-            self.y_flat = np.nonzero(self.data[1])[1]
-            self.main_classes = np.arange(num_classes)
-
-        else:
+            # variables for main classification task 
             self.y = copy.deepcopy(self.data[1])
             self.dataset = list(zip(self.X, self.y))
             self.main_batch_size = self.data_config.batch_size
-            self.n_batches = math.ceil(len(self.dataset) / self.main_batch_size)
+            num_classes = self.y.shape[-1]
+            self.y_flat = np.nonzero(self.data[1])[1]
+            self.main_classes = np.arange(num_classes)
+            # variables for odd-one-out auxiliary task
+            self.rng_seq = hk.PRNGSequence(self.seed)
+            self.y_prime = jnp.nonzero(self.data[1])[-1]
+            self.ooo_classes = np.unique(self.y_prime)
+            # TODO: figure out whether it's useful to use larger batch sizes for the odd-one-out task
+            self.ooo_batch_size = self.data_config.batch_size # * 2
+            self.num_batches = math.ceil(len(self.dataset) / self.main_batch_size)
+        else:
+            # variables for main classification task
+            self.y = copy.deepcopy(self.data[1])
+            self.dataset = list(zip(self.X, self.y))
+            self.main_batch_size = self.data_config.batch_size
+            self.num_batches = math.ceil(len(self.dataset) / self.main_batch_size)
 
             if self.data_config.sampling == "uniform":
                 num_classes = self.y.shape[-1]
                 self.y_flat = np.nonzero(self.data[1])[1]
+
                 if self.class_subset:
                     self.main_classes = np.array(self.class_subset)
                 else:
@@ -93,7 +98,7 @@ class DataLoader:
 
         @partial(jax.jit, static_argnames=["alpha"])
         def label_smoothing(y, alpha: float = 0.1) -> Array:
-            """Apply label smoothing."""
+            """Apply label smoothing to the original labels."""
             return y * (1 - alpha) + (alpha / y.shape[-1])
 
         def unzip_pairs(
@@ -123,8 +128,8 @@ class DataLoader:
 
     def stepping(self, random_order: Array) -> Tuple[Array, Array]:
         """Step over the entire training data in mini-batches of size B."""
-        for i in range(self.n_batches):
-            if self.remainder != 0 and i == int(self.n_batches - 1):
+        for i in range(self.num_batches):
+            if self.remainder != 0 and i == int(self.num_batches - 1):
                 subset = range(
                     i * self.main_batch_size,
                     i * self.main_batch_size + self.remainder,
@@ -181,6 +186,7 @@ class DataLoader:
         return (X, y)
 
     def sample_ooo_batch(self) -> Tuple[Array, Array]:
+        """Uniformly sample odd-one-out triplet task mini-batches."""
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         pairs_subset = self.sample_pairs(seed)
         triplet_subset, ooo_subset = self.expand(pairs_subset)
@@ -196,14 +202,15 @@ class DataLoader:
 
     def main_batch_balancing(self) -> Tuple[Array, Array]:
         """Sample classes uniformly for each randomly sampled mini-batch."""
-        for _ in range(self.n_batches):
+        for _ in range(self.num_batches):
             main_batch = self.sample_main_batch()
             yield main_batch
 
     def ooo_mtl_batch_balancing(
         self,
     ) -> Tuple[Tuple[Array, Array], Tuple[Array, Array]]:
-        for _ in range(self.n_batches):
+        """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
+        for _ in range(self.num_batches):
             ooo_batch = self.sample_ooo_batch()
             main_batch = self.sample_main_batch()
             yield main_batch, ooo_batch
@@ -221,4 +228,4 @@ class DataLoader:
                 return self.main_batch_balancing()
 
     def __len__(self) -> int:
-        return self.n_batches
+        return self.num_batches
