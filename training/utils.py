@@ -166,7 +166,7 @@ def mle_loss_fn_custom(
     X, y = batch
     logits = cnn_predict(state=state, params=params, X=X, task="mle")
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
-    return loss, logits
+    return .5 * loss, logits
 
 
 @jax.jit
@@ -200,7 +200,7 @@ def ooo_loss_fn_custom(
     )
     loss = permutation_centropy(logits=logits, y_perms=y_perms)
     acc = permutation_accuracy(logits=logits, y_perms=y_perms)
-    return loss, (acc)
+    return 2. * loss, (acc)
 
 
 def resnet_symmetrize(

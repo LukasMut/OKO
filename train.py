@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import itertools
+import math
 import os
 import pickle
+import warnings
 from collections import Counter, defaultdict
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import flax
 import jax
@@ -14,7 +16,6 @@ import numpy as np
 from ml_collections import config_dict
 
 import models
-import utils
 from data import DataLoader
 from training import OOOTrainer
 
@@ -128,6 +129,23 @@ def run(
     return trainer, metrics, epoch
 
 
+def batch_inference(
+    trainer: object,
+    X_test: Array,
+    y_test: Array,
+    batch_size: int,
+) -> Tuple[float, Dict[int, float]]:
+    losses = []
+    cls_hits = defaultdict(list)
+    for i in range(math.ceil(X_test.shape[0] / batch_size)):
+        X_i = X_test[i * batch_size : (i + 1) * batch_size]
+        y_i = y_test[i * batch_size : (i + 1) * batch_size]
+        loss, cls_hits = trainer.eval_step((X_i, y_i), cls_hits=cls_hits)
+        losses.append(loss)
+    loss = np.mean(losses)
+    return loss, cls_hits
+
+
 def inference(
     trainer: object,
     X_test: Array,
@@ -139,17 +157,6 @@ def inference(
     alpha=None,
 ) -> None:
     if args.distribution == "heterogeneous":
-        if args.testing == "heterogeneous":
-            assert isinstance(
-                labels, np.ndarray
-            ), "\nTo perform inference on a heavy-tailed class distribution, an array of class labels must be provided.\n"
-            assert isinstance(
-                alpha, float
-            ), "\nThe parameter that determines the shape of the distribution from which classes are sampled is missing.\n"
-            N = min(list(Counter(labels).values()))
-            X_test, y_test = utils.sample_subset(
-                X=X_test, y=labels, N=N, C=args.min_samples, alpha=alpha
-            )
         if args.collect_reps:
             reps_path = os.path.join(dir_config.log_dir, "reps")
             if not os.path.exists(reps_path):
@@ -158,9 +165,20 @@ def inference(
             with open(os.path.join(reps_path, "representations.npz"), "wb") as f:
                 np.savez_compressed(f, reps=reps, classes=y_test, predictions=y_hat)
         else:
-            loss, cls_hits = trainer.eval_step(
-                (X_test, y_test), cls_hits=defaultdict(list)
-            )
+            try:
+                loss, cls_hits = trainer.eval_step(
+                    (X_test, y_test), cls_hits=defaultdict(list)
+                )
+            except:
+                warnings.warn(
+                    "\nTest set does not fit into GPU memory.\nSplitting test set into mini-batches to perform inference.\n"
+                )
+                loss, cls_hits = batch_inference(
+                    trainer=trainer,
+                    X_test=X_test,
+                    y_test=y_test,
+                    batch_size=args.batch_size,
+                )
         acc = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
         test_performance = flax.core.FrozenDict({"loss": loss, "accuracy": acc})
         train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
