@@ -150,14 +150,14 @@ def inference(
     trainer: object,
     X_test: Array,
     y_test: Array,
-    train_labels,
-    dir_config,
-    args,
-    labels=None,
-    alpha=None,
+    train_labels: Array,
+    dir_config: FrozenDict,
+    distribution: str,
+    batch_size: int = None,
+    collect_reps: bool = False,
 ) -> None:
-    if args.distribution == "heterogeneous":
-        if args.collect_reps:
+    if distribution == "heterogeneous":
+        if collect_reps:
             reps_path = os.path.join(dir_config.log_dir, "reps")
             if not os.path.exists(reps_path):
                 os.makedirs(reps_path)
@@ -171,13 +171,16 @@ def inference(
                 )
             except:
                 warnings.warn(
-                    "\nTest set does not fit into GPU memory.\nSplitting test set into mini-batches to perform inference.\n"
+                    "\nTest set does not fit into the GPU's memory.\nSplitting test set into small batches to counteract memory problems.\n"
                 )
+                assert isinstance(
+                    batch_size, int
+                ), "\nBatch size needed to circumvent MemoryError.\n"
                 loss, cls_hits = batch_inference(
                     trainer=trainer,
                     X_test=X_test,
                     y_test=y_test,
-                    batch_size=args.batch_size,
+                    batch_size=batch_size,
                 )
         acc = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
         test_performance = flax.core.FrozenDict({"loss": loss, "accuracy": acc})

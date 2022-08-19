@@ -180,7 +180,7 @@ if __name__ == "__main__":
             y_test=y_test,
             train_labels=train_set[1],
             dir_config=dir_config,
-            args=args,
-            labels=labels,
-            alpha=shape
+            distribution=args.distribution,    
+            batch_size=batch_size,
+            collect_reps=args.collect_reps,
         )
