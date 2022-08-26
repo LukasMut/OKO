@@ -10,6 +10,7 @@ import jax.numpy as jnp
 from jax import vmap, lax
 from functools import partial
 from typing import Any
+from einops import rearrange
 
 Array = jnp.ndarray
 
@@ -84,9 +85,18 @@ class TripletHead(nn.Module):
         self.tripletize = partial(tripletize, k)
         self.trange = partial(trange, k)
 
+    
+    def individual_prediction(self, x: Array, k: int = 3) -> Array:
+        """For each image in an image triplet, predict individually whether an image is the odd-one-out."""
+        x = rearrange(x, "(n k) d -> n k d", n=x.shape[0] // k, k=k)
+        outputs = [nn.Dense(1, dtype=self.dtype)(x[:, i, :]) for i in range(k)]
+        outputs = jnp.concatenate(outputs, axis=1)
+        return outputs
+
     @nn.compact
     def __call__(self, x: Array) -> Array:
-        x = self.tripletize(x)(self.trange(x.shape[0]))
-        x = self.triplet_bottleneck(x)
-        out = self.mlp_head(x)
+        # x = self.tripletize(x)(self.trange(x.shape[0]))
+        # x = self.triplet_bottleneck(x)
+        # out = self.mlp_head(x)
+        out = self.individual_prediction(x)
         return out
