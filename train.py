@@ -13,6 +13,7 @@ import flax
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pandas as pd
 from ml_collections import config_dict
 
 import models
@@ -49,14 +50,13 @@ def make_path(
     model_config: FrozenDict,
     data_config: FrozenDict,
     rnd_seed: int,
-):
+) -> str:
     path = os.path.join(
         root,
         model_config.task,
         model_config.type + model_config.depth,
         f"{data_config.n_samples}_samples",
         data_config.distribution,
-        f"{data_config.sampling}_sampling",
         f"seed{rnd_seed:02d}",
         f"{data_config.alpha:.4f}",
     )
@@ -147,10 +147,13 @@ def batch_inference(
 
 
 def inference(
+    out_path: str,
     trainer: object,
     X_test: Array,
     y_test: Array,
     train_labels: Array,
+    model_config: FrozenDict,
+    data_config: FrozenDict,
     dir_config: FrozenDict,
     distribution: str,
     batch_size: int = None,
@@ -185,22 +188,89 @@ def inference(
         acc = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
         test_performance = flax.core.FrozenDict({"loss": loss, "accuracy": acc})
         train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
-        cls_distribution = Counter(train_labels.tolist())
-        with open(
-            os.path.join(dir_config.log_dir, "train_distribution.pkl"), "wb"
-        ) as f:
-            pickle.dump(cls_distribution, f)
+        cls_distribution = dict(Counter(train_labels.tolist()))
     else:
         test_performance = trainer.eval_step((X_test, y_test))
 
     print(test_performance)
+    print()
 
-    test_path = os.path.join(dir_config.log_dir, "metrics", "test")
-    if not os.path.exists(test_path):
-        os.makedirs(test_path)
+    save_results(
+        out_path=out_path,
+        performance=test_performance,
+        cls_distribution=cls_distribution,
+        model_config=model_config,
+        data_config=data_config,
+    )
 
-    with open(os.path.join(test_path, "performance.pkl"), "wb") as f:
-        pickle.dump(test_performance, f)
+
+def make_results_df(
+    columns: List[str],
+    performance: FrozenDict,
+    cls_distribution: Dict[int, int],
+    model_config: FrozenDict,
+    data_config: FrozenDict,
+) -> pd.DataFrame:
+    results_current_run = pd.DataFrame(index=range(1), columns=columns)
+    results_current_run["model"] = model_config.type + model_config.depth
+    results_current_run["dataset"] = data_config.name
+    results_current_run["class-distribution"] = [cls_distribution]
+    results_current_run["class-performance"] = [performance["accuracy"]]
+    results_current_run["cross-entropy"] = performance["loss"]
+    results_current_run["training"] = model_config.task
+    results_current_run["n_samples"] = data_config.n_samples
+    results_current_run["complexity"] = data_config.alpha
+    return results_current_run
+
+
+def save_results(
+    out_path: str,
+    performance: FrozenDict,
+    cls_distribution: Dict[int, int],
+    model_config: FrozenDict,
+    data_config: FrozenDict,
+) -> None:
+    out_path = os.path.join(out_path, "results")
+    if not os.path.exists(out_path):
+        print("\nCreating results directory...\n")
+        os.makedirs(out_path, exist_ok=True)
+
+    if os.path.isfile(os.path.join(out_path, "results.pkl")):
+        print(
+            "\nFile for results exists.\nConcatenating current results with existing results file...\n"
+        )
+        results_overall = pd.read_pickle(os.path.join(out_path, "results.pkl"))
+        results_current_run = make_results_df(
+            columns=results_overall.columns.values,
+            performance=performance,
+            cls_distribution=cls_distribution,
+            model_config=model_config,
+            data_config=data_config,
+        )
+        results = pd.concat(
+            [results_overall, results_current_run], axis=0, ignore_index=True
+        )
+        results.to_pickle(os.path.join(out_path, "results.pkl"))
+    else:
+        print("\nCreating file for results...\n")
+        columns = [
+            "model",
+            "dataset",
+            "class-distribution",
+            "class-performance",
+            "cross-entropy",
+            "training",
+            "n_samples",
+            "complexity",
+        ]
+        results_current_run = make_results_df(
+            columns=columns,
+            performance=performance,
+            cls_distribution=cls_distribution,
+            model_config=model_config,
+            data_config=data_config,
+        )
+        results_current_run.to_pickle(os.path.join(out_path, "results.pkl"))
 
 
 def create_model(*, model_cls, model_config):
@@ -232,7 +302,7 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             embed_dim=256,
             hidden_dim=512,
             num_heads=8,
-            num_layers=6,
+            num_layers=3,  # 6
             patch_size=4,
             num_channels=3,
             num_patches=64,
@@ -256,7 +326,7 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             num_classes=model_config.n_classes,
             source=data_config.name,
             task=model_config.task,
-            triplet_dim=128 if model_config.task == "mtl" else None,
+            triplet_dim=256 if model_config.task == "mtl" else None,
             capture_intermediates=False,
         )
     else:

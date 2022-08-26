@@ -35,9 +35,9 @@ def get_configs(args, **kwargs):
     except AttributeError:
         model_config.depth = ''
 
+    model_config.weight_decay = 1e-3
     model_config.n_classes = args.n_classes
     model_config.task = args.task
-
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
 

@@ -57,7 +57,7 @@ class DataLoader:
             self.y_prime = jnp.nonzero(self.data[1])[-1]
             self.ooo_classes = np.unique(self.y_prime)
             # TODO: figure out whether it's useful to use larger batch sizes for the odd-one-out task
-            self.ooo_batch_size = self.data_config.batch_size  # * 2
+            self.ooo_batch_size = self.data_config.batch_size
             self.num_batches = math.ceil(len(self.dataset) / self.main_batch_size)
         else:
             # variables for main classification task
@@ -206,7 +206,7 @@ class DataLoader:
             main_batch = self.sample_main_batch()
             yield main_batch
 
-    def ooo_mtl_batch_balancing(
+    def mtl_batch_balancing(
         self,
     ) -> Tuple[Tuple[Array, Array], Tuple[Array, Array]]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
@@ -217,7 +217,7 @@ class DataLoader:
 
     def __iter__(self) -> Iterator:
         if self.model_config.task == "mtl":
-            return self.ooo_mtl_batch_balancing()
+            return self.mtl_batch_balancing()
         else:
             if self.data_config.sampling == "standard":
                 if self.train:

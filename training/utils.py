@@ -24,7 +24,7 @@ def c_entropy(targets, logits, w=None) -> Array:
         # compute weighted version of the cross-entropy error
         targets *= w
     B = targets.shape[0]
-    nll = jnp.sum(-(targets * logits)) / B
+    nll = jnp.sum(-(targets * jax.nn.log_softmax(logits, axis=1))) / B
     return nll
 
 
@@ -38,7 +38,7 @@ def accuracy(logits: Array, targets: Array) -> Array:
 @jax.jit
 def permutation_centropy(logits: Array, y_perms: Array) -> Array:
     centropy = getattr(optax, "softmax_cross_entropy")
-    loss = jnp.mean(vmap(lambda y_hat, y: centropy(y_hat, y).mean())(logits, y_perms))
+    loss = (vmap(lambda y_hat, y: centropy(y_hat, y).mean())(logits, y_perms)).mean()
     return loss
 
 
@@ -64,6 +64,8 @@ def l2_reg(params: FrozenDict, lmbda: float = 1e-3) -> float:
     weight_penalty_params = jax.tree_leaves(params)
     weight_l2 = sum(jnp.sum(x**2) for x in weight_penalty_params if x.ndim > 1)
     weight_penalty = lmbda * 0.5 * weight_l2
+    # weight_l1 = sum(jnp.sum(abs(x)) for x in weight_penalty_params if x.ndim > 1)
+    # weight_penalty = lmbda * 0.5 * weight_l1
     return weight_penalty
 
 
@@ -84,7 +86,21 @@ def inductive_bias(
     return bias
 
 
-def cnn_predict(state: FrozenDict, params: FrozenDict, X: Array, task: str) -> Array:
+def cnn_predict(
+    state: FrozenDict, params: FrozenDict, X: Array, task: str, rng: Array = None
+) -> Array:
+    """
+    if task == 'ooo':
+        _, dropout_apply_rng = random.split(rng)
+        logits = state.apply_fn(
+            {"params": params},
+            X,
+            task=task,
+            rngs={"dropout": dropout_apply_rng},
+        )
+        return logits
+    else:
+    """
     return state.apply_fn({"params": params}, X, task=task)
 
 
@@ -95,13 +111,24 @@ def resnet_predict(
     train: bool,
     task: str,
 ) -> Tuple[Array, State]:
-    logits, new_state = state.apply_fn(
-        {"params": params, "batch_stats": state.batch_stats},
-        X,
-        mutable=["batch_stats"] if train else False,
-        task=task,
-    )
-    return logits, new_state
+    if train:
+        logits, new_state = state.apply_fn(
+            {"params": params, "batch_stats": state.batch_stats},
+            X,
+            mutable=["batch_stats"] if train else False,
+            train=train,
+            task=task,
+        )
+        return logits, new_state
+    else:
+        logits = state.apply_fn(
+            {"params": params, "batch_stats": state.batch_stats},
+            X,
+            mutable=["batch_stats"] if train else False,
+            train=train,
+            task=task,
+        )
+        return logits
 
 
 def vit_predict(
@@ -166,23 +193,28 @@ def mle_loss_fn_custom(
     X, y = batch
     logits = cnn_predict(state=state, params=params, X=X, task="mle")
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
-    return .5 * loss, logits
+    return loss, logits
 
 
 @jax.jit
 def cnn_symmetrize(
-    state: FrozenDict, params: FrozenDict, batch: Tuple[Array], p: Array
+    state: FrozenDict,
+    params: FrozenDict,
+    batch: Tuple[Array],
+    rng: Array,
+    p: Array,
 ) -> Tuple[Array]:
     # symmetrize the neural network function
     # to enforce some sort of permutation invariance
     X, y = batch
     triplet_perm = X[:, p, :, :, :]
     triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
+    # logits = cnn_predict(state, params, triplet_perm, task="ooo", rng=rng)
     logits = cnn_predict(state, params, triplet_perm, task="ooo")
     return logits, y[:, p]
 
 
-@jax.jit
+# @jax.jit
 def ooo_loss_fn_custom(
     state: FrozenDict,
     perms: Array,
@@ -193,14 +225,21 @@ def ooo_loss_fn_custom(
     # TODO: investigate whether two or three permutations work better
     # NOTE: more than two or three permutations are computationally too expensive
     positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=3, replace=False)
+        np.random.choice(np.arange(perms.shape[0]), size=6, replace=False)
     )
-    logits, y_perms = vmap(partial(cnn_symmetrize, state, params, batch))(
+    rng = jax.random.PRNGKey(np.random.randint(low=0, high=1e9, size=1)[0])
+    logits, y_perms = vmap(partial(cnn_symmetrize, state, params, batch, rng))(
         perms[positions]
     )
+
     loss = permutation_centropy(logits=logits, y_perms=y_perms)
     acc = permutation_accuracy(logits=logits, y_perms=y_perms)
-    return 2. * loss, (acc)
+
+    """
+    loss = optax.softmax_cross_entropy(logits, y_perms).mean()
+    acc = accuracy(logits, y_perms)
+    """
+    return loss, (acc)
 
 
 def resnet_symmetrize(
@@ -231,13 +270,17 @@ def ooo_loss_fn_resnet(
     # TODO: investigate whether two or three permutations work better
     # NOTE: more than two or three permutations are computationally too expensive
     positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=3, replace=False)
+        np.random.choice(np.arange(perms.shape[0]), size=1, replace=False)
     )
     logits, y_perms, new_state = vmap(
         partial(resnet_symmetrize, state, params, batch, train)
     )(perms[positions])
+    """
     loss = permutation_centropy(logits=logits, y_perms=y_perms)
     acc = permutation_accuracy(logits=logits, y_perms=y_perms)
+    """
+    loss = optax.softmax_cross_entropy(logits, y_perms).mean()
+    acc = accuracy(logits, y_perms)
     aux = (acc, new_state)
     return loss, aux
 
@@ -277,12 +320,16 @@ def ooo_loss_fn_vit(
     # TODO: investigate whether two or three permutations work better
     # NOTE: more than two or three permutations are computationally too expensive
     positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=3, replace=False)
+        np.random.choice(np.arange(perms.shape[0]), size=1, replace=False)
     )
     logits, y_perms, rng = vmap(
         partial(vit_symmetrize, state, params, batch, rng, train)
     )(perms[positions])
+    """
     loss = permutation_centropy(logits=logits, y_perms=y_perms)
     acc = permutation_accuracy(logits=logits, y_perms=y_perms)
+    """
+    loss = optax.softmax_cross_entropy(logits, y_perms).mean()
+    acc = accuracy(logits, y_perms)
     aux = (acc, rng[0])
     return loss, aux

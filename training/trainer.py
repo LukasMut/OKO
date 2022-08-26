@@ -49,7 +49,7 @@ class OOOTrainer:
         if self.model_config["task"] == "mtl":
             self.tasks = ["mle", "ooo"]
         else:
-            self.tasks = self.model_config.task
+            self.tasks = [self.model_config["task"]]
 
         # inititalize model
         self.init_model()
@@ -79,10 +79,16 @@ class OOOTrainer:
         else:
             H, W, C = self.data_config.input_dim
 
-        batch = random.normal(key_i, shape=(self.data_config.batch_size, H, W, C))
+        def get_init_batch(batch_size, task):
+            if task == 'ooo':
+                batch = random.normal(key_i, shape=(batch_size * 3, H, W, C))
+            else:
+                batch = random.normal(key_i, shape=(batch_size, H, W, C))
+            return batch
 
         if self.model_config["type"].lower() == "resnet":
             for task in self.tasks:
+                batch = get_init_batch(self.data_config.batch_size, task)
                 variables = self.model.init(key_j, batch, train=True, task=task)
                 init_params, self.init_batch_stats = (
                     variables["params"],
@@ -92,6 +98,7 @@ class OOOTrainer:
         else:
             if self.model_config["type"].lower() == "vit":
                 for task in self.tasks:
+                    batch = get_init_batch(self.data_config.batch_size, task)
                     self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
                     init_params = self.model.init(
                         {"params": init_rng, "dropout": dropout_init_rng},
@@ -102,10 +109,28 @@ class OOOTrainer:
                     setattr(self, f"init_{task}_params", init_params)
             else:
                 for task in self.tasks:
+                    batch = get_init_batch(self.data_config.batch_size, task)
+                    """
+                    if task == 'ooo':
+                        self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
+                        init_params = self.model.init(
+                                {"params": init_rng, "dropout": dropout_init_rng},
+                                batch,
+                                task=task,
+                            )["params"]
+                        setattr(self, f"init_{task}_params", init_params)
+                    else:
+                        variables = self.model.init(key_j, batch, task=task)
+                        _, init_params = variables.pop("params")
+                        setattr(self, f"init_{task}_params", init_params)
+                        del variables
+                    """
+
                     variables = self.model.init(key_j, batch, task=task)
                     _, init_params = variables.pop("params")
                     setattr(self, f"init_{task}_params", init_params)
                     del variables
+                    
             self.init_batch_stats = None
         self.state = None
 
@@ -236,7 +261,9 @@ class OOOTrainer:
                             loss_fn, argnums=0, has_aux=True
                         )(getattr(state, f"{tasks[i]}_params"), batch)
                     # update parameters
-                    state = state.apply_gradients(grads=grads, task=tasks[i])
+                    state = state.apply_gradients(
+                        grads=grads, task=tasks[i]
+                    )
                 total_loss += loss
                 accs.append(aux)
 
@@ -252,7 +279,7 @@ class OOOTrainer:
                     task="mle",
                 )
             elif model_config["type"].lower() == "resnet":
-                logits, _ = getattr(utils, "rn_predict")(
+                logits = getattr(utils, "resnet_predict")(
                     state=state,
                     params=state.mle_params,
                     X=X,

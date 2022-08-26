@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+
 import flax.linen as nn
 import jax.numpy as jnp
 
@@ -156,17 +157,17 @@ class ViT(nn.Module):
         for attn_block in self.transformer:
             x = attn_block(x, train=train)
 
-        # Perform classification prediction
-        cls = x[:, 0]
-        
         if self.task == "mle":
+            # Perform classification prediction
+            cls = x[:, 0]
             out = self.mle_head(cls)
         else:
+            t = x[:, 1:, :].mean(axis=1)
             if self.capture_intermediates:
                 self.sow("intermediates", "latent_reps")
             assert isinstance(
                 task, str
-            ), "\nIn MTL, current task needs to be provided.\n"
-            out = getattr(self, f"{task}_head")(cls)
+            ), "\nIn MTL setting, current task needs to be provided.\n"
+            out = getattr(self, f"{task}_head")(t)
 
         return out

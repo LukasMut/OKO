@@ -175,10 +175,13 @@ if __name__ == "__main__":
         y_test = jax.nn.one_hot(x=labels, num_classes=jnp.max(labels) + 1)
 
         train.inference(
+            out_path=args.out_path,
             trainer=trainer,
             X_test=X_test,
             y_test=y_test,
             train_labels=train_set[1],
+            model_config=model_config,
+            data_config=data_config,
             dir_config=dir_config,
             distribution=args.distribution,    
             batch_size=batch_size,
