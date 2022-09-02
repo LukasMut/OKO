@@ -95,8 +95,8 @@ class TripletHead(nn.Module):
 
     @nn.compact
     def __call__(self, x: Array) -> Array:
-        # x = self.tripletize(x)(self.trange(x.shape[0]))
-        # x = self.triplet_bottleneck(x)
-        # out = self.mlp_head(x)
-        out = self.individual_prediction(x)
+        x = self.tripletize(x)(self.trange(x.shape[0]))
+        x = self.triplet_bottleneck(x)
+        out = self.mlp_head(x)
+        # out = self.individual_prediction(x)
         return out

@@ -130,7 +130,7 @@ class OOOTrainer:
                     _, init_params = variables.pop("params")
                     setattr(self, f"init_{task}_params", init_params)
                     del variables
-                    
+
             self.init_batch_stats = None
         self.state = None
 
@@ -447,11 +447,11 @@ class OOOTrainer:
 
     def save_model(self, epoch=0):
         # Save current model at certain training iteration
-        target = {"mle_params": self.state.mle_params} 
+        target = {"params": {"mle_params": self.state.mle_params}}
         if self.model_config["task"] == "mtl":
-            target.update({"ooo_params": self.state.ooo_params})
+            target["params"].update({"ooo_params": self.state.ooo_params})
         if self.model_config["type"].lower() == "resnet":
-            target.update({"batch_stats": self.state.batch_stats})    
+            target.update({"params": {"batch_stats": self.state.batch_stats}})
         checkpoints.save_checkpoint(
             ckpt_dir=self.dir_config.log_dir, target=target, step=epoch, overwrite=True
         )
@@ -464,12 +464,12 @@ class OOOTrainer:
             )
             self.state = TrainState.create(
                 apply_fn=self.model.apply,
-                mle_params=state_dict["mle_params"],
-                batch_stats=state_dict["batch_stats"],
+                mle_params=state_dict["params"]["mle_params"],
+                batch_stats=state_dict["params"]["batch_stats"],
                 tx=self.state.tx
                 if self.state
                 else optax.sgd(self.optimizer_config.lr, momentum=0.9),
-                ooo_params=state_dict["ooo_params"] if "ooo_params" in state_dict else None,
+                ooo_params=state_dict["params"]["ooo_params"] if "ooo_params" in state_dict["params"] else None,
             )
         else:
             state_dict = checkpoints.restore_checkpoint(
@@ -477,12 +477,12 @@ class OOOTrainer:
             )
             self.state = TrainState.create(
                 apply_fn=self.model.apply,
-                mle_params=state_dict["mle_params"],
+                mle_params=state_dict["params"]["mle_params"],
                 tx=self.state.tx
                 if self.state
                 else optax.adam(self.optimizer_config.lr),
                 batch_stats=None,
-                ooo_params=state_dict["ooo_params"] if "ooo_params" in state_dict else None,
+                ooo_params=state_dict["params"]["ooo_params"] if "ooo_params" in state_dict["params"] else None,
             )
 
     def __len__(self) -> int:
