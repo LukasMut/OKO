@@ -231,7 +231,6 @@ def save_results(
     model_config: FrozenDict,
     data_config: FrozenDict,
 ) -> None:
-    out_path = os.path.join(out_path, "results")
     if not os.path.exists(out_path):
         print("\nCreating results directory...\n")
         os.makedirs(out_path, exist_ok=True)
