@@ -216,6 +216,7 @@ def make_results_df(
     results_current_run["dataset"] = data_config.name
     results_current_run["class-distribution"] = [cls_distribution]
     results_current_run["class-performance"] = [performance["accuracy"]]
+    results_current_run["avg-performance"] = np.mean(list(performance["accuracy"].values()))
     results_current_run["cross-entropy"] = performance["loss"]
     results_current_run["training"] = model_config.task
     results_current_run["n_samples"] = data_config.n_samples
@@ -258,6 +259,7 @@ def save_results(
             "dataset",
             "class-distribution",
             "class-performance",
+            "avg-performance",
             "cross-entropy",
             "training",
             "n_samples",
