@@ -239,7 +239,7 @@ class OOOTrainer:
                         getattr(state, f"{tasks[i]}_params"),
                         batch,
                         True,
-                        model_config.weights,
+                        model_config["weights"],
                     )
                     # update parameters and batch statistics
                     state = state.apply_gradients(
@@ -256,7 +256,7 @@ class OOOTrainer:
                             batch,
                             rng,
                             True,
-                            model_config.weights,
+                            model_config["weights"],
                         )
                         self.rng = aux[1]
                     else:
@@ -265,7 +265,7 @@ class OOOTrainer:
                         )(
                             getattr(state, f"{tasks[i]}_params"),
                             batch,
-                            model_config.weights,
+                            model_config["weights"],
                         )
                     # update parameters
                     state = state.apply_gradients(grads=grads, task=tasks[i])

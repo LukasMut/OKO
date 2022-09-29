@@ -86,7 +86,7 @@ class DataLoader:
         Note that class-methods cannot be jitted because an object cannot be jitted.
         """
 
-        @jax.jit
+        @partial(jax.jit, static_argnames=["seed"])
         def sample_pairs(seed: int) -> Array:
             """Sample pairs of objects from the same class."""
             key = jax.random.PRNGKey(seed)
@@ -161,7 +161,7 @@ class DataLoader:
         return triplets, ooo
 
     def sample_triplets(self, triplets: Array) -> Array:
-        def sample_triplet(y_prime, triplet: Array) -> list:
+        def sample_triplet(y_prime, triplet: Array) -> List[int]:
             return [np.random.choice(np.where(y_prime == cls)[0]) for cls in triplet]
 
         return np.apply_along_axis(
@@ -188,6 +188,8 @@ class DataLoader:
 
     def sample_ooo_batch(self) -> Tuple[Array, Array]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
+        # import time
+        # a = time.time()
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         pairs_subset = self.sample_pairs(seed)
         triplet_subset, ooo_subset = self.expand(pairs_subset)
@@ -199,6 +201,9 @@ class DataLoader:
         X = rearrange(X, "(n k) h w c -> n k h w c", n=X.shape[0] // 3)
         X = jax.device_put(X)
         y = jax.device_put(y)
+        # print(time.time() - a)
+        # print()
+        # raise Exception
         return (X, y)
 
     def main_batch_balancing(self) -> Tuple[Array, Array]:

@@ -208,7 +208,7 @@ def make_results_df(
     results_current_run["model"] = model_config.type + model_config.depth
     results_current_run["dataset"] = data_config.name
     results_current_run["class-distribution"] = [cls_distribution]
-    results_current_run["class-performance"] = [performance["accuracy"]]
+    results_current_run["class-performance"] = [list(performance["accuracy"].items())]
     results_current_run["avg-performance"] = np.mean(
         list(performance["accuracy"].values())
     )
