@@ -281,7 +281,7 @@ def ooo_loss_fn_resnet(
     # TODO: investigate whether two or three permutations work better
     # NOTE: more than two or three permutations are computationally too expensive
     positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=1, replace=False)
+        np.random.choice(np.arange(perms.shape[0]), size=4, replace=False)
     )
     logits, y_perms, new_state = vmap(
         partial(resnet_symmetrize, state, params, batch, train)
@@ -332,7 +332,7 @@ def ooo_loss_fn_vit(
     # TODO: investigate whether two or three permutations work better
     # NOTE: more than two or three permutations are computationally too expensive
     positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=1, replace=False)
+        np.random.choice(np.arange(perms.shape[0]), size=4, replace=False)
     )
     logits, y_perms, rng = vmap(
         partial(vit_symmetrize, state, params, batch, rng, train)
