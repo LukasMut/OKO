@@ -38,7 +38,6 @@ class OOOTrainer:
     dir_config: FrozenDict
     steps: int
     rnd_seed: int
-    regularization: bool = None
 
     def __post_init__(self):
         self.rng_seq = hk.PRNGSequence(self.rnd_seed)
@@ -60,11 +59,9 @@ class OOOTrainer:
         )
         # create jitted train and eval functions
         self.create_functions()
-        if (
-            self.data_config.distribution == "heterogeneous"
-            and self.data_config.alpha >= float(0)
-        ):
-            self.class_hitting = True
+
+        if self.data_config.distribution == "heterogeneous":
+            setattr(self, "class_hitting", True)
 
         self.train_metrics = list()
         self.test_metrics = list()
@@ -80,7 +77,7 @@ class OOOTrainer:
             H, W, C = self.data_config.input_dim
 
         def get_init_batch(batch_size, task):
-            if task == 'ooo':
+            if task == "ooo":
                 batch = random.normal(key_i, shape=(batch_size * 3, H, W, C))
             else:
                 batch = random.normal(key_i, shape=(batch_size, H, W, C))
@@ -110,7 +107,9 @@ class OOOTrainer:
             else:
                 for task in self.tasks:
                     batch = get_init_batch(self.data_config.batch_size, task)
+
                     """
+                    # NOTE: this part is only necessary if we implement the triplet odd-one-out clf head as a Transformer
                     if task == 'ooo':
                         self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
                         init_params = self.model.init(
@@ -178,11 +177,8 @@ class OOOTrainer:
         )
 
     def create_functions(self) -> None:
-
-        def init_loss_fn(
-            model_config: FrozenDict, state: Any, task: str
-            ) -> Any:
-            if task == 'ooo':
+        def init_loss_fn(model_config: FrozenDict, state: Any, task: str) -> Any:
+            if task == "ooo":
                 # create all six permutations of positions
                 perms = jax.device_put(
                     jnp.array(list(itertools.permutations(range(3), 3)))
@@ -203,23 +199,19 @@ class OOOTrainer:
             """Get task and model specific loss function."""
             if model_config["task"] == "mtl":
                 mle_loss_fn = init_loss_fn(
-                    model_config=model_config,
-                    state=state,
-                    task='mle'
+                    model_config=model_config, state=state, task="mle"
                 )
                 ooo_loss_fn = init_loss_fn(
                     model_config=model_config,
                     state=state,
-                    task='ooo',
+                    task="ooo",
                 )
                 if train:
                     return (mle_loss_fn, ooo_loss_fn)
                 return mle_loss_fn
             else:
                 loss_fn = init_loss_fn(
-                    model_config=model_config,
-                    state=state,
-                    task='mle'
+                    model_config=model_config, state=state, task="mle"
                 )
             return loss_fn
 
@@ -243,7 +235,12 @@ class OOOTrainer:
                 if model_config["type"].lower() == "resnet":
                     (loss, aux), grads = jax.value_and_grad(
                         loss_fn, argnums=0, has_aux=True
-                    )(getattr(state, f"{tasks[i]}_params"), batch, True)
+                    )(
+                        getattr(state, f"{tasks[i]}_params"),
+                        batch,
+                        True,
+                        model_config.weights,
+                    )
                     # update parameters and batch statistics
                     state = state.apply_gradients(
                         grads=grads,
@@ -254,16 +251,24 @@ class OOOTrainer:
                     if model_config["type"].lower() == "vit":
                         (loss, aux), grads = jax.value_and_grad(
                             loss_fn, argnums=0, has_aux=True
-                        )(getattr(state, f"{tasks[i]}_params"), batch, rng, True)
+                        )(
+                            getattr(state, f"{tasks[i]}_params"),
+                            batch,
+                            rng,
+                            True,
+                            model_config.weights,
+                        )
                         self.rng = aux[1]
                     else:
                         (loss, aux), grads = jax.value_and_grad(
                             loss_fn, argnums=0, has_aux=True
-                        )(getattr(state, f"{tasks[i]}_params"), batch)
+                        )(
+                            getattr(state, f"{tasks[i]}_params"),
+                            batch,
+                            model_config.weights,
+                        )
                     # update parameters
-                    state = state.apply_gradients(
-                        grads=grads, task=tasks[i]
-                    )
+                    state = state.apply_gradients(grads=grads, task=tasks[i])
                 total_loss += loss
                 accs.append(aux)
 
@@ -298,10 +303,8 @@ class OOOTrainer:
             return logits
 
         # initialize functions
-        self.train_step = partial(
-            train_step, self.model_config, self.tasks)
-        self.inference = partial(
-            inference, self.model_config)
+        self.train_step = partial(train_step, self.model_config, self.tasks)
+        self.inference = partial(inference, self.model_config)
         self.get_loss_fn = get_loss_fn
 
     def eval_step(self, batch: Tuple[Array], cls_hits=None):
@@ -469,7 +472,9 @@ class OOOTrainer:
                 tx=self.state.tx
                 if self.state
                 else optax.sgd(self.optimizer_config.lr, momentum=0.9),
-                ooo_params=state_dict["params"]["ooo_params"] if "ooo_params" in state_dict["params"] else None,
+                ooo_params=state_dict["params"]["ooo_params"]
+                if "ooo_params" in state_dict["params"]
+                else None,
             )
         else:
             state_dict = checkpoints.restore_checkpoint(
@@ -482,7 +487,9 @@ class OOOTrainer:
                 if self.state
                 else optax.adam(self.optimizer_config.lr),
                 batch_stats=None,
-                ooo_params=state_dict["params"]["ooo_params"] if "ooo_params" in state_dict["params"] else None,
+                ooo_params=state_dict["params"]["ooo_params"]
+                if "ooo_params" in state_dict["params"]
+                else None,
             )
 
     def __len__(self) -> int:

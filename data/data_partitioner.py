@@ -3,23 +3,23 @@
 
 __all__ = ["DataPartitioner"]
 
-import h5py
 import os
-import utils
 import random
-import torch
-import jax
 import re
-
-import numpy as np
-import jax.numpy as jnp
-import torchvision.transforms as T
-import torch.utils.data as data
-
-from dataclasses import dataclass
 from collections import Counter
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, Dict, List, Tuple
+
+import h5py
+import jax
+import jax.numpy as jnp
+import numpy as np
+import torch
+import torch.utils.data as data
+import torchvision.transforms as T
+
+import utils
 
 Array = np.ndarray
 Array = jnp.ndarray
@@ -33,7 +33,6 @@ class DataPartitioner:
     distribution: str
     seed: int
     min_samples: int = None
-    alpha: float = None
     train: bool = True
     train_frac: float = 0.85
 
@@ -41,40 +40,41 @@ class DataPartitioner:
         # seed rng
         random.seed(self.seed)
         np.random.seed(self.seed)
-
-        if self.distribution == "heterogeneous":
-            assert isinstance(
-                self.min_samples, int
-            ), "\nMinimum number of samples per class must be defined.\n"
-            assert isinstance(
-                self.alpha, float
-            ), "\nShape parameter of class distribution needs to be defined.\n"
-        else:
-            self.alpha = 0.0
+        assert isinstance(
+            self.min_samples, int
+        ), "\nMinimum number of samples per class must be defined.\n"
 
         self.load_data(self.data_path)
         self.n_classes = self.classes.shape[0]
 
-        if re.search(r"^cifar10", self.dataset) or self.dataset == "svhn":
+        if self.dataset.startswith("cifar10"):
             self.augmenter = self.get_augmentation()
             self.transform = self.get_transform()
 
     def load_data(self, data_path: str) -> None:
         """Load original (full) dataset."""
         if self.dataset == "cifar10":
-            dataset = np.load(os.path.join(data_path, "training.npz" if self.train else "validation.npz"))
+            dataset = np.load(
+                os.path.join(
+                    data_path, "training.npz" if self.train else "validation.npz"
+                )
+            )
             self.images = dataset["data"]
             self.labels = dataset["labels"]
 
         else:
-            dataset = torch.load(os.path.join(data_path, "training.pt" if self.train else "validation.npz"))
+            dataset = torch.load(
+                os.path.join(
+                    data_path, "training.pt" if self.train else "validation.npz"
+                )
+            )
             self.images = dataset[0].numpy()
             self.labels = dataset[1].numpy()
         self.classes = np.unique(self.labels)
 
     @staticmethod
     def get_statistics(dataset: str) -> Tuple[List[float], List[float]]:
-        """Get means and STDs of training data for CIFAR-10 and SVHN."""
+        """Get means and STDs of training data for CIFAR-10/CIFAR-100."""
         if dataset == "cifar10":
             means = [0.4914, 0.4822, 0.4465]
             stds = [0.24703, 0.24349, 0.26159]
@@ -82,9 +82,6 @@ class DataPartitioner:
         elif dataset == "cifar100":
             means = [0.5071, 0.4865, 0.44092]
             stds = [0.2673, 0.2564, 0.2761]
-        elif dataset == "svhn":
-            means = [0.4377, 0.4438, 0.4728]
-            stds = [0.1980, 0.2010, 0.1970]
         else:
             raise Exception(
                 "\nWe do not want to apply image transformations to MNIST-like datasets.\n"
@@ -124,7 +121,7 @@ class DataPartitioner:
                     class_partition, size=hist[k], replace=False
                 )
             except ValueError:
-               class_subsample = np.random.choice(
+                class_subsample = np.random.choice(
                     class_partition, size=hist[k], replace=True
                 )
             class_samples[k] = class_subsample
@@ -134,7 +131,7 @@ class DataPartitioner:
         """Randomly sample class instances as determined per our exponential function."""
         if self.distribution == "heterogeneous":
             n_totals = self.n_samples * self.n_classes
-            _, sample = utils.sample_instances(self.n_classes, n_totals, self.alpha)
+            sample = utils.sample_instances(self.n_classes, n_totals)
             hist = utils.get_histogram(sample, self.min_samples)
         else:
             hist = np.ones_like(self.classes, dtype=int) * self.n_samples
@@ -279,7 +276,6 @@ class DataPartitioner:
             f"{self.n_samples:d}_samples",
             self.distribution,
             f"seed{self.rnd_seed:02d}",
-            f"{self.alpha:.4f}",
         )
         if not os.path.exists(out_path):
             print(f"\n...Creating output directory: {out_path}\n")
@@ -299,7 +295,6 @@ class TripletData(data.Dataset):
     distribution: int
     seed: int
     min_samples: int = None
-    alpha: float = None
     train: bool = True
     train_frac: float = 0.85
 
@@ -312,16 +307,11 @@ class TripletData(data.Dataset):
             assert isinstance(
                 self.min_samples, int
             ), "\nMinimum number of samples per class must be defined.\n"
-            assert isinstance(
-                self.alpha, float
-            ), "\nShape parameter of class distribution needs to be defined.\n"
-        else:
-            self.alpha = 0.0
 
         self.load_data(self.data_path)
         self.n_classes = self.classes.shape[0]
 
-        if re.search(r"^cifar10", self.dataset) or self.dataset == "svhn":
+        if self.dataset.startswith("cifar10"):
             self.augmenter = self.get_augmentation()
             self.transform = self.get_transform()
 
@@ -351,9 +341,6 @@ class TripletData(data.Dataset):
         elif dataset == "cifar100":
             means = [0.5071, 0.4865, 0.44092]
             stds = [0.2673, 0.2564, 0.2761]
-        elif dataset == "svhn":
-            means = [0.4377, 0.4438, 0.4728]
-            stds = [0.1980, 0.2010, 0.1970]
         else:
             raise Exception(
                 "\nWe do not want to apply image transformations to MNIST-like datasets.\n"
@@ -394,7 +381,7 @@ class TripletData(data.Dataset):
         return class_instances
 
     @staticmethod
-    def get_sample(n_classes: int, n_totals: int, alpha: float):
+    def get_sample(n_classes: int, n_totals: int):
         def add_remainder(sample: np.ndarray, n_classes: int) -> np.ndarray:
             remainder = np.array(
                 [y for y in np.arange(n_classes) if y not in np.unique(sample)]
@@ -402,15 +389,24 @@ class TripletData(data.Dataset):
             sample = np.hstack((sample, remainder))
             return sample
 
-        # permutation of classes
-        k = np.random.permutation(np.arange(n_classes))
-        # exponential function with rapid decay, parameterized by the positive real alpha
-        f = lambda k, alpha: 1 / ((k + 1) ** alpha)
-        q = partial(f, alpha)(k)
-        q /= q.sum()  # normalization is necessary to create a probability distribution
-        sample = np.random.choice(n_classes, size=n_totals, replace=True, p=q)
+        def get_class_distribution(T: int, k: int = 3, p: float = 0.8) -> Array:
+            """With probabilities (p/k) and (1-p)/(T-k) sample k frequent and T-k rare classes respectively."""
+            distribution = np.zeros(T)
+            p_k = p / k
+            q_k = (1 - p) / (T - k)
+            frequent_classes = np.random.choice(T, size=k, replace=False)
+            rare_classes = np.asarray(list(set(range(T)).difference(frequent_classes)))
+            distribution[frequent_classes] += p_k
+            distribution[rare_classes] += q_k
+            return distribution
+
+        class_distribution = get_class_distribution(n_classes)
+        sample = np.random.choice(
+            n_classes, size=n_totals, replace=True, p=class_distribution
+        )
         sample = add_remainder(sample, n_classes)
-        return q, sample
+
+        return sample
 
     @staticmethod
     def get_histogram(sample: np.ndarray, min_samples: int) -> np.ndarray:
@@ -426,7 +422,7 @@ class TripletData(data.Dataset):
         """Randomly sample class instances as determined per our exponential function."""
         if self.distribution == "heterogeneous":
             n_totals = self.n_samples * self.n_classes
-            _, sample = self.get_sample(self.n_classes, n_totals, self.alpha)
+            sample = self.get_sample(self.n_classes, n_totals)
             hist = self.get_histogram(sample, self.min_samples)
         else:
             hist = np.ones_like(self.classes, dtype=int) * self.n_samples
@@ -457,7 +453,7 @@ class TripletData(data.Dataset):
         # number of instances per class and the total number of
         # data points is large (i.e, if this difference is large,
         # many augmentations for class instances will be added)
-        
+
         # TODO: figure out what number of data augmentations is best
         # max = hist.sum() if hist.sum() < max_instances else hist.max()
         max = hist.max()

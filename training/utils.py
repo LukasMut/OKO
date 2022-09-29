@@ -23,8 +23,8 @@ def c_entropy(targets, logits, w=None) -> Array:
     if isinstance(w, Array):
         # compute weighted version of the cross-entropy error
         targets *= w
-    B = targets.shape[0]
-    nll = jnp.sum(-(targets * jax.nn.log_softmax(logits, axis=1))) / B
+    nll = jnp.sum(-(targets * jax.nn.log_softmax(logits, axis=-1)))
+    nll /= targets.shape[0]
     return nll
 
 
@@ -156,12 +156,15 @@ def mle_loss_fn_vit(
     batch: Tuple[Array, Array],
     rng=None,
     train: bool = True,
+    weights: Array = None,
 ) -> Tuple[Array, Tuple[Array]]:
     """MLE loss function used during finetuning."""
     X, y = batch
     logits, rng = vit_predict(
         state=state, params=params, rng=rng, X=X, train=train, task="mle"
     )
+    if isinstance(weights, Array):
+        y *= weights
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     aux = (logits, rng)
     return loss, aux
@@ -172,12 +175,15 @@ def mle_loss_fn_resnet(
     params: FrozenDict,
     batch: Tuple[Array, Array],
     train: bool = True,
+    weights: Array = None,
 ) -> Tuple[Array, Tuple[Array]]:
     """MLE loss function used during finetuning."""
     X, y = batch
     logits, new_state = resnet_predict(
         state=state, params=params, X=X, train=train, task="mle"
     )
+    if isinstance(weights, Array):
+        y *= weights
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     aux = (logits, new_state)
     return loss, aux
@@ -188,10 +194,13 @@ def mle_loss_fn_custom(
     state: FrozenDict,
     params: FrozenDict,
     batch: Tuple[Array, Array],
+    weights: Array = None,
 ) -> Tuple[Array, Tuple[Array]]:
     """MLE loss function used during finetuning."""
     X, y = batch
     logits = cnn_predict(state=state, params=params, X=X, task="mle")
+    if isinstance(weights, Array):
+        y *= weights
     loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
     return loss, logits
 
@@ -220,6 +229,7 @@ def ooo_loss_fn_custom(
     perms: Array,
     params: FrozenDict,
     batch: Tuple[Array, Array],
+    weights: Array = None,
 ) -> Tuple[Array, Tuple[Array]]:
     """Loss function to predict the odd-one-out in a triplet of images."""
     # TODO: investigate whether two or three permutations work better
@@ -265,6 +275,7 @@ def ooo_loss_fn_resnet(
     params: FrozenDict,
     batch: Tuple[Array, Array],
     train: bool = True,
+    weights: Array = None,
 ) -> Tuple[Array, Tuple[Array]]:
     """Loss function to predict the odd-one-out in a triplet of images."""
     # TODO: investigate whether two or three permutations work better
@@ -315,6 +326,7 @@ def ooo_loss_fn_vit(
     batch: Tuple[Array, Array],
     rng=None,
     train: bool = True,
+    weights: Array = None,
 ) -> Tuple[Array, Tuple[Array]]:
     """Loss function to predict the odd-one-out in a triplet of images."""
     # TODO: investigate whether two or three permutations work better

@@ -31,14 +31,12 @@ def parseargs():
     aa('--data_path', type=str,
         help='path/to/original/dataset')
     aa('--dataset', type=str,
-        choices=['mnist', 'cifar10', 'cifar100', 'svhn'])
+        choices=['mnist', 'cifar10', 'cifar100', 'imagenet'])
     aa('--network', type=str, default='ResNet18',
         choices=utils.MODELS)
     aa('--distribution', type=str,
         choices=['homogeneous', 'heterogeneous'],
         help='whether dataset is balanced or imbalanced')
-    aa('--shapes', type=float, nargs='+',
-        help='shape parameter the determines the length of the tail of the class distribution')
     aa('--samples', type=int, nargs='+',
         help='average number of samples per class')
     aa('--n_classes', type=int,
@@ -72,11 +70,9 @@ def parseargs():
         help='whether to perform inference without stepping over the data')
     aa('--collect_reps', action='store_true',
         help='whether to store encoder latent representations')
-    aa('--regularization', action='store_true',
-        help='apply inductive bias to model, i.e., keep optimized parameters close to those obtained from the pretraining')
     aa('--mle_loss', type=str, default='standard',
-        choices=['standard', 'weighted', 'dirichlet'],
-        help='whether standard or noisy dirichlet weighting should be applied to the cross-entropy error')
+        choices=['standard', 'weighted'],
+        help='whether or not to compute a weighted version of the cross-entropy error')
     aa('--seeds', type=int, nargs='+',
         help='list of random seeds for cross-validating results over different random inits')
     args = parser.parse_args()
@@ -87,12 +83,11 @@ if __name__ == "__main__":
     # parse arguments
     args = parseargs()
     # get current combination of settings
-    (n_samples, epochs, batch_size, eta), shape, rnd_seed = train.get_combination(
+    (n_samples, epochs, batch_size, eta), rnd_seed = train.get_combination(
         samples=args.samples,
         epochs=args.epochs,
         batch_sizes=args.batch_sizes,
         learning_rates=args.etas,
-        shapes=args.shapes,
         seeds=args.seeds,
         )
 
@@ -104,7 +99,6 @@ if __name__ == "__main__":
     train_set, val_set = utils.get_fewshot_subsets(
         args,
         n_samples=n_samples,
-        alpha=shape,
         rnd_seed=rnd_seed,
         )
 
@@ -113,7 +107,6 @@ if __name__ == "__main__":
 
     data_config, model_config, optimizer_config = get_configs(
         args,
-        shape=shape,
         n_samples=n_samples,
         input_dim=input_dim,
         epochs=epochs, 
@@ -145,7 +138,6 @@ if __name__ == "__main__":
         steps=args.steps,
         rnd_seed=rnd_seed,
         inference=args.inference,
-        regularization=args.regularization
         )
 
     if args.task in ["mle", "mtl"]:

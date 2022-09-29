@@ -30,19 +30,16 @@ def get_combination(
     epochs: List[int],
     batch_sizes: List[int],
     learning_rates: List[float],
-    shapes: List[float],
     seeds: List[int],
 ):
     combs = []
     combs.extend(
         list(
-            itertools.product(
-                zip(samples, epochs, batch_sizes, learning_rates), shapes, seeds
-            )
+            itertools.product(zip(samples, epochs, batch_sizes, learning_rates), seeds)
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"
-    return combs[int(os.environ["SGE_TASK_ID"])]
+    return combs[0]  # combs[int(os.environ["SGE_TASK_ID"])]
 
 
 def make_path(
@@ -58,7 +55,6 @@ def make_path(
         f"{data_config.n_samples}_samples",
         data_config.distribution,
         f"seed{rnd_seed:02d}",
-        f"{data_config.alpha:.4f}",
     )
     return path
 
@@ -93,7 +89,6 @@ def run(
     steps: int,
     rnd_seed: int,
     inference: bool = False,
-    regularization: bool = False,
 ) -> tuple:
     trainer = OOOTrainer(
         model=model,
@@ -103,7 +98,6 @@ def run(
         dir_config=dir_config,
         steps=steps,
         rnd_seed=rnd_seed,
-        regularization=regularization,
     )
     # TODO: remove inference flag and create separate inference.py file just for inference
     if inference:
@@ -124,7 +118,6 @@ def run(
             seed=rnd_seed,
             train=False,
         )
-
         metrics, epoch = trainer.train(train_batches, val_batches)
     return trainer, metrics, epoch
 
@@ -172,13 +165,13 @@ def inference(
                 loss, cls_hits = trainer.eval_step(
                     (X_test, y_test), cls_hits=defaultdict(list)
                 )
-            except:
+            except (RuntimeError, MemoryError):
                 warnings.warn(
                     "\nTest set does not fit into the GPU's memory.\nSplitting test set into small batches to counteract memory problems.\n"
                 )
                 assert isinstance(
                     batch_size, int
-                ), "\nBatch size needed to circumvent MemoryError.\n"
+                ), "\nBatch size required to circumvent problems with GPU VRAM.\n"
                 loss, cls_hits = batch_inference(
                     trainer=trainer,
                     X_test=X_test,
@@ -216,11 +209,13 @@ def make_results_df(
     results_current_run["dataset"] = data_config.name
     results_current_run["class-distribution"] = [cls_distribution]
     results_current_run["class-performance"] = [performance["accuracy"]]
-    results_current_run["avg-performance"] = np.mean(list(performance["accuracy"].values()))
+    results_current_run["avg-performance"] = np.mean(
+        list(performance["accuracy"].values())
+    )
     results_current_run["cross-entropy"] = performance["loss"]
     results_current_run["training"] = model_config.task
     results_current_run["n_samples"] = data_config.n_samples
-    results_current_run["complexity"] = data_config.alpha
+    results_current_run["probability"] = data_config.class_probs
     return results_current_run
 
 
@@ -262,7 +257,7 @@ def save_results(
             "cross-entropy",
             "training",
             "n_samples",
-            "complexity",
+            "probability",
         ]
         results_current_run = make_results_df(
             columns=columns,

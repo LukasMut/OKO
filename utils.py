@@ -115,7 +115,7 @@ def get_full_dataset(partitioner: object) -> Tuple[Array, Array]:
 
 
 def get_fewshot_subsets(
-    args, alpha, n_samples, rnd_seed
+    args, n_samples, rnd_seed
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     train_partitioner = DataPartitioner(
         dataset=args.dataset,
@@ -124,7 +124,6 @@ def get_fewshot_subsets(
         distribution=args.distribution,
         seed=rnd_seed,
         min_samples=args.min_samples,
-        alpha=alpha,
         train=True,
     )
     val_partitioner = DataPartitioner(
@@ -134,7 +133,6 @@ def get_fewshot_subsets(
         distribution=args.distribution,
         seed=rnd_seed,
         min_samples=args.min_samples,
-        alpha=alpha,
         train=True,
     )
     if n_samples:
@@ -148,20 +146,23 @@ def get_fewshot_subsets(
     return train_set, val_set
 
 
-def f(alpha: float, k: int):
-    """Exponential function with rapid decay, parameterized by the positive real alpha."""
-    return 1 / ((k + 1) ** alpha)
+def get_class_distribution(T: int, k: int = 3, p: float = .8) -> Array:
+    """With probabilities $(p/k)$ and $(1-p)/(T-k)$ sample $k$ frequent and $T-k$ rare classes respectively."""
+    distribution = np.zeros(T)
+    p_k = (p/k)
+    q_k = (1-p)/(T-k)
+    frequent_classes = np.random.choice(T, size=k, replace=False)
+    rare_classes = np.asarray(list(set(range(T)).difference(list(frequent_classes))))
+    distribution[frequent_classes] += p_k
+    distribution[rare_classes] += q_k
+    return distribution
 
 
-def sample_instances(n_classes: int, n_totals: int, alpha: float):
-    k = np.random.permutation(np.arange(n_classes))  # permutation of classes
-    q = partial(f, alpha)(k)
-    q /= (
-        q.sum()
-    )  # division by the sum is necessary to create a probability distribution
-    sample = np.random.choice(n_classes, size=n_totals, replace=True, p=q)
+def sample_instances(n_classes: int, n_totals: int) -> Array:
+    class_distribution = get_class_distribution(n_classes)
+    sample = np.random.choice(n_classes, size=n_totals, replace=True, p=class_distribution)
     sample = add_remainder(sample, n_classes)
-    return q, sample
+    return sample
 
 
 def add_remainder(sample: np.ndarray, n_classes: int) -> np.ndarray:
@@ -191,10 +192,13 @@ def get_subset(y, hist):
 
 
 def sample_subset(
-    X: np.ndarray, y: np.ndarray, N: int, C: int, alpha: int
+    X: np.ndarray, 
+    y: np.ndarray, 
+    N: int, 
+    C: int,
 ) -> Tuple[np.ndarray, np.ndarray]:
     M = len(np.unique(y))
-    _, sample, _ = sample_instances(M, N, alpha)
+    sample = sample_instances(M, N)
     hist = get_histogram(sample, C)
     subset = get_subset(y, hist)
     X_prime = X[subset]
@@ -203,13 +207,13 @@ def sample_subset(
     return (X_prime, y_prime)
 
 
-def get_class_weights(M: int, K: int, C: int, alpha: float) -> np.ndarray:
+def get_class_weights(M: int, K: int, C: int) -> np.ndarray:
     """Compute class weights to calculate weighted cross-entropy error."""
     N = M * K
-    _, sample, _ = sample_instances(K, N, alpha)
+    sample = sample_instances(K, N)
     hist = get_histogram(sample, C)
     q_prime = hist / hist.sum()  # empirical class distribution (different from q)
     w = q_prime ** (-1)
-    # smooth class weights to avoid exploding gradient problems
+    # smooth class weights to avoid exploding gradient/numerical overflow issues
     w = (w / w.sum()) * K
-    return w
+    return jax.device_put(w)

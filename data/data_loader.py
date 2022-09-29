@@ -37,6 +37,7 @@ class DataLoader:
         self.device_num = random.choices(range(self.num_gpus))[0]
         self.X = self.data[0]
         self.class_subset = copy.deepcopy(self.class_subset)
+
         # seed random number generator
         np.random.seed(self.seed)
         random.seed(self.seed)
@@ -217,15 +218,15 @@ class DataLoader:
 
     def __iter__(self) -> Iterator:
         if self.model_config.task == "mtl":
-            return self.mtl_batch_balancing()
+            return iter(self.mtl_batch_balancing())
         else:
             if self.data_config.sampling == "standard":
                 if self.train:
                     # randomly permute the order of samples in the data (i.e., for each epoch shuffle the data)
                     random_order = np.random.permutation(np.arange(len(self.dataset)))
-                return self.stepping(random_order)
+                return iter(self.stepping(random_order))
             else:
-                return self.main_batch_balancing()
+                return iter(self.main_batch_balancing())
 
     def __len__(self) -> int:
         return self.num_batches
