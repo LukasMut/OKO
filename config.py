@@ -16,7 +16,7 @@ def get_configs(args, **kwargs):
     # balanced (homogeneous) or imbalanced (heterogeneous) dataset
     data_config.distribution = args.distribution
     # dataset imbalance is a function of p
-    data_config.class_probs = 0.7
+    data_config.class_probs = 0.8
     # minimum number of instances per class
     data_config.min_samples = args.min_samples
     # whether to balance mini-batches

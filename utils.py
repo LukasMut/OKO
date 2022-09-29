@@ -146,7 +146,7 @@ def get_fewshot_subsets(
     return train_set, val_set
 
 
-def get_class_distribution(T: int, k: int = 3, p: float = .7) -> Array:
+def get_class_distribution(T: int, k: int = 3, p: float = .8) -> Array:
     """With probabilities $(p/k)$ and $(1-p)/(T-k)$ sample $k$ frequent and $T-k$ rare classes respectively."""
     distribution = np.zeros(T)
     p_k = (p/k)
