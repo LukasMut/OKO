@@ -82,7 +82,7 @@ class DataPartitioner:
         elif dataset == "cifar100":
             means = [0.5071, 0.4865, 0.44092]
             stds = [0.2673, 0.2564, 0.2761]
-        elif dataset == 'imagenet':
+        elif dataset == "imagenet":
             means = [0.485, 0.456, 0.406]
             stds = [0.229, 0.224, 0.225]
         else:
