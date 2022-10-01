@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import jax.random as random
 import numpy as np
 import optax
-from flax.core.frozen_dict import FrozenDict
+from flax.core.frozen_dict import FrozenDict, freeze
 from flax.training import checkpoints
 from flax.training.early_stopping import EarlyStopping
 from torch.utils.tensorboard import SummaryWriter
@@ -129,7 +129,6 @@ class OOOTrainer:
                     _, init_params = variables.pop("params")
                     setattr(self, f"init_{task}_params", init_params)
                     del variables
-
             self.init_batch_stats = None
         self.state = None
 
@@ -215,6 +214,32 @@ class OOOTrainer:
                 )
             return loss_fn
 
+        @partial(jax.jit, static_argnames=["task"])
+        def partition_and_merge_grads(
+            grads: FrozenDict, state: Any, task: str
+        ) -> FrozenDict:
+            def get_zero_grads(params: FrozenDict) -> FrozenDict:
+                return jax.tree_util.tree_map(lambda p: jnp.zeros_like(p), params)
+
+            if task == "mle":
+                encoder_grads, _ = hk.data_structures.partition(
+                    lambda m, n, p: m != "mlp_head", grads
+                )
+                _, clf_params = hk.data_structures.partition(
+                    lambda m, n, p: m != "ooo_head", state.ooo_params
+                )
+            else:
+                encoder_grads, _ = hk.data_structures.partition(
+                    lambda m, n, p: m != "ooo_head", grads
+                )
+                _, clf_params = hk.data_structures.partition(
+                    lambda m, n, p: m != "mlp_head", state.mle_params
+                )
+            zero_grads = get_zero_grads(clf_params)
+            grads = hk.data_structures.merge(encoder_grads, zero_grads)
+            grads = freeze(grads)
+            return grads
+
         def train_step(
             model_config,
             tasks,
@@ -231,6 +256,7 @@ class OOOTrainer:
             accs = []
             for i, loss_fn in enumerate(loss_funs):
                 batch = batches[i]
+                # params = partition_and_merge_params(state, tasks[i])
                 # get loss, gradients for objective function, and other outputs of loss function
                 if model_config["type"].lower() == "resnet":
                     (loss, aux), grads = jax.value_and_grad(
@@ -267,8 +293,13 @@ class OOOTrainer:
                             batch,
                             model_config["weights"],
                         )
-                    # update parameters
+                    # jointly update parameters for both tasks
                     state = state.apply_gradients(grads=grads, task=tasks[i])
+                    grads = partition_and_merge_grads(
+                        grads=grads, state=state, task=tasks[i]
+                    )
+                    state = state.apply_gradients(grads=grads, task=tasks[i - 1])
+
                 total_loss += loss
                 accs.append(aux)
 

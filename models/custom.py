@@ -6,6 +6,7 @@ import flax.linen as nn
 
 from typing import Sequence
 from .triplet import TripletHead
+
 # from .vit_triplet import TripletHead
 from .modules import Identity, Normalization, Sigmoid
 from utils import TASKS

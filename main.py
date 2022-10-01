@@ -31,7 +31,7 @@ def parseargs():
     aa('--data_path', type=str,
         help='path/to/original/dataset')
     aa('--dataset', type=str,
-        choices=['mnist', 'cifar10', 'cifar100', 'imagenet'])
+        choices=['mnist', 'fashionmnist', 'cifar10', 'cifar100', 'imagenet'])
     aa('--network', type=str, default='ResNet18',
         choices=utils.MODELS)
     aa('--distribution', type=str,
