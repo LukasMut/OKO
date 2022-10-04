@@ -129,6 +129,7 @@ class OOOTrainer:
                     _, init_params = variables.pop("params")
                     setattr(self, f"init_{task}_params", init_params)
                     del variables
+
             self.init_batch_stats = None
         self.state = None
 

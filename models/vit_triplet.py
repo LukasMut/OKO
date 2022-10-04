@@ -38,7 +38,7 @@ class TripletBottleneck(nn.Module):
         x = self.bottleneck(x)
         if self.capture_intermediates:
             self.sow("intermediates", "representations", x)
-        x = nn.relu(x)
+        # x = nn.relu(x)
         return x
 
 
@@ -125,10 +125,10 @@ class TripletHead(nn.Module):
         x = self.input_layer(x)
 
         # Add CLS token and positional encoding
-        cls_token = self.cls_token.repeat(B, axis=0)
-        x = jnp.concatenate([cls_token, x], axis=1)
-        x = x + self.pos_embedding[:, : T + 1]
-        # x = x + self.pos_embedding[:, :T]
+        # cls_token = self.cls_token.repeat(B, axis=0)
+        # x = jnp.concatenate([cls_token, x], axis=1)
+        # x = x + self.pos_embedding[:, : T + 1]
+        x = x + self.pos_embedding[:, :T]
 
         # Apply Transforrmer
         x = self.dropout(x, deterministic=False)
@@ -147,16 +147,18 @@ class TripletHead(nn.Module):
         # x = self.tripletize(x)(self.trange(x.shape[0]))
 
         # print(x.shape)
-        x = rearrange(x, "b t d -> (b t) d")
-        x = self.tripletize(x)(self.trange(x.shape[0]))
-        # x = rearrange(x, "b t d -> b (t d)")
+        
+        # x = rearrange(x, "b t d -> (b t) d")
+        # x = self.tripletize(x)(self.trange(x.shape[0]))
+        x = rearrange(x, "b t d -> b (t d)")
         x = self.triplet_bottleneck(x)
-        x = x = rearrange(x, "b (t d) -> b t d", b=x.shape[0], t=3)
-        out = self.individual_token_prediction(x)
+        
+        # x = rearrange(x, "b (t d) -> b t d", b=x.shape[0], t=3)
+        # out = self.individual_token_prediction(x)
 
         # out = self.mlp_head(x)
 
-        # x = nn.LayerNorm()(x)
-        # out = nn.Dense(3, dtype=self.dtype)(x)
+        x = nn.LayerNorm()(x)
+        out = nn.Dense(3, dtype=self.dtype)(x)
 
         return out

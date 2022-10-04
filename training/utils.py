@@ -237,7 +237,7 @@ def ooo_loss_fn_custom(
     positions = jax.device_put(
         np.random.choice(np.arange(perms.shape[0]), size=6, replace=False)
     )
-    rng = jax.random.PRNGKey(np.random.randint(low=0, high=1e9, size=1)[0])
+    rng = None  # jax.random.PRNGKey(np.random.randint(low=0, high=1e9, size=1)[0])
     logits, y_perms = vmap(partial(cnn_symmetrize, state, params, batch, rng))(
         perms[positions]
     )
