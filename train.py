@@ -50,6 +50,7 @@ def make_path(
 ) -> str:
     path = os.path.join(
         root,
+        data_config.name,
         model_config.task,
         model_config.type + model_config.depth,
         f"{data_config.n_samples}_samples",
@@ -71,7 +72,7 @@ def create_dirs(
     dir_config.log_dir = log_dir
 
     if not os.path.exists(log_dir):
-        print("\n...Creating results directory.\n")
+        print("\n...Creating directory to store model checkpoints.\n")
         os.makedirs(log_dir, exist_ok=True)
 
     return dir_config
