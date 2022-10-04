@@ -327,5 +327,5 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             capture_intermediates=False,
         )
     else:
-        raise Exception("\nNo model type other than CNN, ResNet or ViT implemented.\n")
+        raise ValueError("\nNo model type other than (custom) CNN, ResNet or ViT implemented.\n")
     return model
