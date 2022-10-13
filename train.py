@@ -28,18 +28,19 @@ FrozenDict = config_dict.FrozenConfigDict
 def get_combination(
     samples: List[int],
     epochs: List[int],
-    batch_sizes: List[int],
+    ooo_batch_sizes: List[int],
+    main_batch_sizes: List[int],
     learning_rates: List[float],
     seeds: List[int],
 ):
     combs = []
     combs.extend(
         list(
-            itertools.product(zip(samples, epochs, batch_sizes, learning_rates), seeds)
+            itertools.product(zip(samples, epochs, ooo_batch_sizes, main_batch_sizes, learning_rates), seeds)
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"
-    return combs[int(os.environ["SGE_TASK_ID"])]
+    return combs[0] # combs[int(os.environ["SGE_TASK_ID"])]
 
 
 def make_path(
@@ -153,38 +154,35 @@ def inference(
     batch_size: int = None,
     collect_reps: bool = False,
 ) -> None:
-    if distribution == "heterogeneous":
-        if collect_reps:
-            reps_path = os.path.join(dir_config.log_dir, "reps")
-            if not os.path.exists(reps_path):
-                os.makedirs(reps_path)
-            test_performance, reps, y_hat = trainer.eval_step((X_test, y_test))
-            with open(os.path.join(reps_path, "representations.npz"), "wb") as f:
-                np.savez_compressed(f, reps=reps, classes=y_test, predictions=y_hat)
-        else:
-            try:
-                loss, cls_hits = trainer.eval_step(
-                    (X_test, y_test), cls_hits=defaultdict(list)
-                )
-            except (RuntimeError, MemoryError):
-                warnings.warn(
-                    "\nTest set does not fit into the GPU's memory.\nSplitting test set into small batches to counteract memory problems.\n"
-                )
-                assert isinstance(
-                    batch_size, int
-                ), "\nBatch size required to circumvent problems with GPU VRAM.\n"
-                loss, cls_hits = batch_inference(
-                    trainer=trainer,
-                    X_test=X_test,
-                    y_test=y_test,
-                    batch_size=batch_size,
-                )
-        acc = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
-        test_performance = flax.core.FrozenDict({"loss": loss, "accuracy": acc})
-        train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
-        cls_distribution = dict(Counter(train_labels.tolist()))
+    if collect_reps:
+        reps_path = os.path.join(dir_config.log_dir, "reps")
+        if not os.path.exists(reps_path):
+            os.makedirs(reps_path)
+        test_performance, reps, y_hat = trainer.eval_step((X_test, y_test))
+        with open(os.path.join(reps_path, "representations.npz"), "wb") as f:
+            np.savez_compressed(f, reps=reps, classes=y_test, predictions=y_hat)
     else:
-        test_performance = trainer.eval_step((X_test, y_test))
+        try:
+            loss, cls_hits = trainer.eval_step(
+                (X_test, y_test), cls_hits=defaultdict(list),
+            )
+        except (RuntimeError, MemoryError):
+            warnings.warn(
+                "\nTest set does not fit into the GPU's memory.\nSplitting test set into small batches to counteract memory problems.\n"
+            )
+            assert isinstance(
+                batch_size, int
+            ), "\nBatch size required to circumvent problems with GPU VRAM.\n"
+            loss, cls_hits = batch_inference(
+                trainer=trainer,
+                X_test=X_test,
+                y_test=y_test,
+                batch_size=batch_size,
+            )
+    acc = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
+    test_performance = flax.core.FrozenDict({"loss": loss, "accuracy": acc})
+    train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
+    cls_distribution = dict(Counter(train_labels.tolist()))
 
     print(test_performance)
     print()
@@ -198,6 +196,28 @@ def inference(
     )
 
 
+def sort_cls_distribution(cls_distribution: Dict[int, int]) -> Dict[int, int]:
+    return dict(sorted(cls_distribution.items(), key=lambda kv:kv[1], reverse=True))
+
+
+def get_cls_subset_performance(cls_accuracies: Dict[int, float], cls_subset: List[int]) -> Tuple[float]:
+    _, cls_subset_performances = zip(*list(filter(lambda x: x[0] in cls_subset, cls_accuracies)))
+    return cls_subset_performances
+
+
+def get_cls_subset_performances(
+        cls_distribution: Dict[int, int], 
+        cls_accuracies: Dict[int, float], k: int = 3
+) -> Tuple[Tuple[float], Tuple[float]]:
+    cls_distribution = sort_cls_distribution(cls_distribution) 
+    classes = list(cls_distribution.keys())
+    frequent_classes = classes[:k]
+    rare_classes = classes[k:]
+    performance_frequent_classes = get_cls_subset_performance(cls_accuracies, frequent_classes)
+    performance_rare_classes = get_cls_subset_performance(cls_accuracies, rare_classes)
+    return performance_frequent_classes, performance_rare_classes
+
+
 def make_results_df(
     columns: List[str],
     performance: FrozenDict,
@@ -205,20 +225,29 @@ def make_results_df(
     model_config: FrozenDict,
     data_config: FrozenDict,
 ) -> pd.DataFrame:
+    accuracies = list(performance["accuracy"].items())
+    performance_frequent_classes, performance_rare_classes = get_cls_subset_performances(
+        cls_distribution=cls_distribution,
+        cls_accuracies=accuracies,
+    )
     results_current_run = pd.DataFrame(index=range(1), columns=columns)
     results_current_run["model"] = model_config.type + model_config.depth
     results_current_run["dataset"] = data_config.name
     results_current_run["class-distribution"] = [cls_distribution]
-    results_current_run["class-performance"] = [list(performance["accuracy"].items())]
-    results_current_run["avg-performance"] = np.mean(
-        list(performance["accuracy"].values())
+    results_current_run["class-performance"] = [accuracies]
+    results_current_run["avg-performance-overall"] = np.mean(list(map(lambda x: x[1], accuracies)))
+    results_current_run["avg-performance-frequent-classes"] = np.mean(
+        performance_frequent_classes
+    )
+    results_current_run["avg-performance-rare-classes"] = np.mean(
+        performance_rare_classes
     )
     results_current_run["cross-entropy"] = performance["loss"]
     results_current_run["training"] = model_config.task
     results_current_run["n_samples"] = data_config.n_samples
+    results_current_run["n_frequent_classes"] = data_config.n_frequent_classes
     results_current_run["probability"] = data_config.class_probs
     return results_current_run
-
 
 def save_results(
     out_path: str,
@@ -254,7 +283,9 @@ def save_results(
             "dataset",
             "class-distribution",
             "class-performance",
-            "avg-performance",
+            "avg-performance-overall",
+            "avg-performance-frequent-classes",
+            "avg-performance-rare-classes",
             "cross-entropy",
             "training",
             "n_samples",
@@ -322,8 +353,6 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             encoder_widths=encoder_widths,
             num_classes=model_config.n_classes,
             source=data_config.name,
-            task=model_config.task,
-            triplet_dim=256 if model_config.task == "mtl" else None,
             capture_intermediates=False,
         )
     else:

@@ -6,8 +6,6 @@ import flax.linen as nn
 import jax.numpy as jnp
 
 from .triplet import TripletHead
-from .modules import Identity, Normalization, Sigmoid
-from utils import TASKS
 
 
 Array = jnp.ndarray
@@ -100,40 +98,10 @@ class ViT(nn.Module):
             (1, 1 + self.num_patches, self.embed_dim),
         )
 
-        if self.task == "mtl":
-            self.mle_head, self.ooo_head = self.make_head()
-        elif self.task == "mle":
-            self.mle_head = self.make_head()
-        else:
-            raise ValueError(
-                f"\nOutput heads implemented only for the following tasks: {TASKS}.\n"
-            )
-
-    @nn.nowrap
-    def make_head(self):
-        """Create target task specific MLP head."""
-        if self.task == "mle":
-            assert isinstance(
-                self.num_classes, int
-            ), "\nNumber of classes in dataset required.\n"
-            head = nn.Dense(self.num_classes, name="mle_head")
-        else:
-            assert isinstance(
-                self.num_classes, int
-            ), "\nNumber of classes in dataset required.\n"
-            assert isinstance(
-                self.triplet_dim, int
-            ), "\nDimensionality of triplet head bottleneck required.\n"
-            mle_head = nn.Sequential(
-                [nn.LayerNorm(), nn.Dense(self.num_classes)], name="mle_head"
-            )
-            ooo_head = TripletHead(
+        self.head = TripletHead(
                 backbone="vit",
-                triplet_dim=self.triplet_dim,
-                capture_intermediates=self.capture_intermediates,
+                num_classes=self.num_classes,
             )
-            return mle_head, ooo_head
-        return head
 
     @nn.compact
     def __call__(
@@ -157,17 +125,13 @@ class ViT(nn.Module):
         for attn_block in self.transformer:
             x = attn_block(x, train=train)
 
-        if self.task == "mle":
-            # Perform classification prediction
-            cls = x[:, 0]
-            out = self.mle_head(cls)
+        if train:
+            # use positional encodings for training
+            cls = x[:, 1:, :].mean(axis=1)
         else:
-            t = x[:, 1:, :].mean(axis=1)
-            if self.capture_intermediates:
-                self.sow("intermediates", "latent_reps")
-            assert isinstance(
-                task, str
-            ), "\nIn MTL setting, current task needs to be provided.\n"
-            out = getattr(self, f"{task}_head")(t)
-
+            # use classification token for inference
+            cls = x[:, 0]
+        if self.capture_intermediates:
+            self.sow("intermediates", "latent_reps")
+        out = self.head(cls, train)
         return out

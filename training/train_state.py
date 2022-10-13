@@ -46,12 +46,10 @@ class TrainState(struct.PyTreeNode):
 
     step: int
     apply_fn: Callable = struct.field(pytree_node=False)
-    mle_params: flax.core.FrozenDict[str, Any]
+    params: flax.core.FrozenDict[str, Any]
     tx: optax.GradientTransformation = struct.field(pytree_node=False)
-    mle_opt_state: optax.OptState
+    opt_state: optax.OptState
     batch_stats: Any = None
-    ooo_params: flax.core.FrozenDict[str, Any] = None
-    ooo_opt_state: flax.core.FrozenDict[str, Any] = None
 
     def apply_gradients(self, *, grads, **kwargs):
         """Updates `step`, `params`, `opt_state` and `**kwargs` in return value.
@@ -68,56 +66,25 @@ class TrainState(struct.PyTreeNode):
         and `opt_state` updated by applying `grads`, and additional attributes
         replaced as specified by `kwargs`.
         """
-        task = kwargs.pop("task")
         updates, new_opt_state = self.tx.update(
-            grads, getattr(self, f"{task}_opt_state"), getattr(self, f"{task}_params")
+            grads, self.opt_state, self.params)
+        new_params = optax.apply_updates(self.params, updates)
+        return self.replace(
+            step=self.step + 1,
+            params=new_params,
+            opt_state=new_opt_state,
+            **kwargs,
         )
-        new_params = optax.apply_updates(getattr(self, f"{task}_params"), updates)
-        if task == "mle":
-            return self.replace(
-                step=self.step + 1,
-                mle_params=new_params,
-                mle_opt_state=new_opt_state,
-                **kwargs,
-            )
-        else:
-            return self.replace(
-                step=self.step + 1,
-                ooo_params=new_params,
-                ooo_opt_state=new_opt_state,
-                **kwargs,
-            )
 
     @classmethod
     def create(cls, *, apply_fn, params, tx, **kwargs):
         """Creates a new instance with `step=0` and initialized `opt_state`."""
-        task = kwargs.pop("task")
-        if task == "mtl":
-            try:
-                ooo_params = kwargs.pop("ooo_params")
-                ooo_opt_state = tx.init(ooo_params)
-            except KeyError:
-                raise Exception(
-                    "\nTwo sets of params are required for the MTL setting\n"
-                )
-            mle_opt_state = tx.init(params)
-            return cls(
-                step=0,
-                apply_fn=apply_fn,
-                mle_params=params,
-                mle_opt_state=mle_opt_state,
-                tx=tx,
-                ooo_params=ooo_params,
-                ooo_opt_state=ooo_opt_state,
-                **kwargs,
-            )
-        else:
-            opt_state = tx.init(params)
-            return cls(
-                step=0,
-                apply_fn=apply_fn,
-                mle_params=params,
-                mle_opt_state=opt_state,
-                tx=tx,
-                **kwargs,
-            )
+        opt_state = tx.init(params)
+        return cls(
+            step=0,
+            apply_fn=apply_fn,
+            params=params,
+            opt_state=opt_state,
+            tx=tx,
+            **kwargs,
+        )

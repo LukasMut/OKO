@@ -44,12 +44,6 @@ class OOOTrainer:
         self.rng = jax.random.PRNGKey(self.rnd_seed)
         # freeze model config dictionary (i.e., make it immutable)
         self.model_config = FrozenDict(self.model_config)
-
-        if self.model_config["task"] == "mtl":
-            self.tasks = ["mle", "ooo"]
-        else:
-            self.tasks = [self.model_config["task"]]
-
         # inititalize model
         self.init_model()
 
@@ -59,9 +53,6 @@ class OOOTrainer:
         )
         # create jitted train and eval functions
         self.create_functions()
-
-        if self.data_config.distribution == "heterogeneous":
-            setattr(self, "class_hitting", True)
 
         self.train_metrics = list()
         self.test_metrics = list()
@@ -76,59 +67,33 @@ class OOOTrainer:
         else:
             H, W, C = self.data_config.input_dim
 
-        def get_init_batch(batch_size, task):
-            if task == "ooo":
-                batch = random.normal(key_i, shape=(batch_size * 3, H, W, C))
-            else:
-                batch = random.normal(key_i, shape=(batch_size, H, W, C))
-            return batch
+        def get_init_batch(batch_size: int) -> Array:
+            return random.normal(key_i, shape=(batch_size * 3, H, W, C))
 
         if self.model_config["type"].lower() == "resnet":
-            for task in self.tasks:
-                batch = get_init_batch(self.data_config.batch_size, task)
-                variables = self.model.init(key_j, batch, train=True, task=task)
-                init_params, self.init_batch_stats = (
-                    variables["params"],
-                    variables["batch_stats"],
-                )
-                setattr(self, f"init_{task}_params", init_params)
+            batch = get_init_batch(self.data_config.ooo_batch_size)
+            variables = self.model.init(key_j, batch, train=True)
+            init_params, self.init_batch_stats = (
+                variables["params"],
+                variables["batch_stats"],
+            )
+            setattr(self, f"init_params", init_params)
         else:
             if self.model_config["type"].lower() == "vit":
-                for task in self.tasks:
-                    batch = get_init_batch(self.data_config.batch_size, task)
-                    self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
-                    init_params = self.model.init(
-                        {"params": init_rng, "dropout": dropout_init_rng},
-                        batch,
-                        train=True,
-                        task=task,
-                    )["params"]
-                    setattr(self, f"init_{task}_params", init_params)
+                batch = get_init_batch(self.data_config.ooo_batch_size)
+                self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
+                init_params = self.model.init(
+                    {"params": init_rng, "dropout": dropout_init_rng},
+                    batch,
+                    train=True,
+                )["params"]
+                setattr(self, f"init__params", init_params)
             else:
-                for task in self.tasks:
-                    batch = get_init_batch(self.data_config.batch_size, task)
-
-                    """
-                    # NOTE: this part is only necessary if we implement the triplet odd-one-out clf head as a Transformer
-                    if task == 'ooo':
-                        self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
-                        init_params = self.model.init(
-                                {"params": init_rng, "dropout": dropout_init_rng},
-                                batch,
-                                task=task,
-                            )["params"]
-                        setattr(self, f"init_{task}_params", init_params)
-                    else:
-                        variables = self.model.init(key_j, batch, task=task)
-                        _, init_params = variables.pop("params")
-                        setattr(self, f"init_{task}_params", init_params)
-                        del variables
-                    """
-
-                    variables = self.model.init(key_j, batch, task=task)
-                    _, init_params = variables.pop("params")
-                    setattr(self, f"init_{task}_params", init_params)
-                    del variables
+                batch = get_init_batch(self.data_config.ooo_batch_size)
+                variables = self.model.init(key_j, batch)
+                _, init_params = variables.pop("params")
+                setattr(self, f"init_params", init_params)
+                del variables
 
             self.init_batch_stats = None
         self.state = None
@@ -163,219 +128,108 @@ class OOOTrainer:
         # initialize training state
         self.state = TrainState.create(
             apply_fn=self.model.apply,
-            params=self.init_mle_params
+            params=self.init_params
             if self.state is None
-            else self.state.mle_params,
+            else self.state.params,
             batch_stats=self.init_batch_stats
             if self.state is None
             else self.state.batch_stats,
             tx=optimizer,
-            task=self.model_config["task"],
-            ooo_params=self.init_ooo_params
-            if self.state is None
-            else self.state.ooo_params,
         )
 
     def create_functions(self) -> None:
-        def init_loss_fn(model_config: FrozenDict, state: Any, task: str) -> Any:
-            if task == "ooo":
-                # create all six permutations of positions
-                perms = jax.device_put(
-                    jnp.array(list(itertools.permutations(range(3), 3)))
-                )
-                loss_fn = partial(
-                    getattr(utils, f"{task}_loss_fn_{model_config['type'].lower()}"),
-                    state,
-                    perms,
-                )
-            else:
-                loss_fn = partial(
-                    getattr(utils, f"{task}_loss_fn_{model_config['type'].lower()}"),
-                    state,
-                )
-            return loss_fn
 
-        def get_loss_fn(state, model_config: FrozenDict, train=None) -> Callable:
-            """Get task and model specific loss function."""
-            if model_config["task"] == "mtl":
-                mle_loss_fn = init_loss_fn(
-                    model_config=model_config, state=state, task="mle"
-                )
-                ooo_loss_fn = init_loss_fn(
-                    model_config=model_config,
-                    state=state,
-                    task="ooo",
-                )
-                if train:
-                    return (mle_loss_fn, ooo_loss_fn)
-                return mle_loss_fn
-            else:
-                loss_fn = init_loss_fn(
-                    model_config=model_config, state=state, task="mle"
-                )
-            return loss_fn
-
-        @partial(jax.jit, static_argnames=["task"])
-        def partition_and_merge_grads(
-            grads: FrozenDict, state: Any, task: str
-        ) -> FrozenDict:
-            def get_zero_grads(params: FrozenDict) -> FrozenDict:
-                return jax.tree_util.tree_map(lambda p: jnp.zeros_like(p), params)
-
-            if task == "mle":
-                encoder_grads, _ = hk.data_structures.partition(
-                    lambda m, n, p: m != "mlp_head", grads
-                )
-                _, clf_params = hk.data_structures.partition(
-                    lambda m, n, p: m != "ooo_head", state.ooo_params
-                )
-            else:
-                encoder_grads, _ = hk.data_structures.partition(
-                    lambda m, n, p: m != "ooo_head", grads
-                )
-                _, clf_params = hk.data_structures.partition(
-                    lambda m, n, p: m != "mlp_head", state.mle_params
-                )
-            zero_grads = get_zero_grads(clf_params)
-            grads = hk.data_structures.merge(encoder_grads, zero_grads)
-            grads = freeze(grads)
-            return grads
-
-        def train_step(
-            model_config,
-            tasks,
-            state,
-            batches,
-            rng=None,
-        ):
-            loss_funs = get_loss_fn(
-                state,
-                model_config,
-                train=True if model_config["task"] == "mtl" else False,
+        def init_loss_fn(model_config: FrozenDict, state: Any) -> Callable:    
+            loss_fn = partial(
+                getattr(utils, f"loss_fn_{model_config['type'].lower()}"),
+                state
             )
-            total_loss = 0
-            accs = []
-            for i, loss_fn in enumerate(loss_funs):
-                batch = batches[i]
-                # params = partition_and_merge_params(state, tasks[i])
-                # get loss, gradients for objective function, and other outputs of loss function
-                if model_config["type"].lower() == "resnet":
+            return loss_fn
+
+        def train_step(model_config: FrozenDict, state, batch: Tuple[Array], rng=None):
+            loss_fn = self.init_loss_fn(state)
+            # get loss, gradients for objective function, and other outputs of loss function
+            if model_config["type"].lower() == "resnet":
+                (loss, aux), grads = jax.value_and_grad(
+                    loss_fn, argnums=0, has_aux=True
+                )(
+                    state.params,
+                    batch,
+                    True,
+                )
+                # update parameters and batch statistics
+                state = state.apply_gradients(
+                    grads=grads,
+                    batch_stats=aux[1]["batch_stats"],
+                )
+            else:
+                if model_config["type"].lower() == "vit":
                     (loss, aux), grads = jax.value_and_grad(
                         loss_fn, argnums=0, has_aux=True
                     )(
-                        getattr(state, f"{tasks[i]}_params"),
+                        state.params,
                         batch,
+                        rng,
                         True,
-                        model_config["weights"],
                     )
-                    # update parameters and batch statistics
-                    state = state.apply_gradients(
-                        grads=grads,
-                        batch_stats=aux[1]["batch_stats"],
-                        task=tasks[i],
-                    )
+                    self.rng = aux[1]
                 else:
-                    if model_config["type"].lower() == "vit":
-                        (loss, aux), grads = jax.value_and_grad(
-                            loss_fn, argnums=0, has_aux=True
-                        )(
-                            getattr(state, f"{tasks[i]}_params"),
-                            batch,
-                            rng,
-                            True,
-                            model_config["weights"],
-                        )
-                        self.rng = aux[1]
-                    else:
-                        (loss, aux), grads = jax.value_and_grad(
-                            loss_fn, argnums=0, has_aux=True
-                        )(
-                            getattr(state, f"{tasks[i]}_params"),
-                            batch,
-                            model_config["weights"],
-                        )
-                    # jointly update parameters for both tasks
-                    state = state.apply_gradients(grads=grads, task=tasks[i])
-                    grads = partition_and_merge_grads(
-                        grads=grads, state=state, task=tasks[i]
+                    (loss, aux), grads = jax.value_and_grad(
+                        loss_fn, argnums=0, has_aux=True
+                    )(
+                        state.params,
+                        batch,
                     )
-                    state = state.apply_gradients(grads=grads, task=tasks[i - 1])
+                    state = state.apply_gradients(grads=grads)
 
-                total_loss += loss
-                accs.append(aux)
+            return state, loss, aux
 
-            # print(f'\nOdd-one-out accuracy: {accs[1]}\n')
-            return state, total_loss, accs[0]
-
-        def inference(model_config, state, X, rng=None) -> Array:
+        def inference(model_config, state, X: Array, rng=None) -> Array:
             if model_config["type"].lower() == "custom":
-                logits = getattr(utils, "cnn_predict")(
+                logits = utils.cnn_predict(
                     state=state,
-                    params=state.mle_params,
-                    X=X,
-                    task="mle",
-                )
-            elif model_config["type"].lower() == "resnet":
-                logits = getattr(utils, "resnet_predict")(
-                    state=state,
-                    params=state.mle_params,
+                    params=state.params,
                     X=X,
                     train=False,
-                    task="mle",
+                )
+            elif model_config["type"].lower() == "resnet":
+                logits = utils.resnet_predict(
+                    state=state,
+                    params=state.params,
+                    X=X,
+                    train=False,
                 )
             elif model_config["type"].lower() == "vit":
-                logits, _ = getattr(utils, "vit_predict")(
+                logits, _ = utils.vit_predict(
                     state=state,
-                    params=state.mle_params,
+                    params=state.params,
                     rng=rng,
                     X=X,
                     train=False,
-                    task="mle",
                 )
             return logits
 
         # initialize functions
-        self.train_step = partial(train_step, self.model_config, self.tasks)
+        self.init_loss_fn = partial(init_loss_fn, self.model_config)
+        self.train_step = partial(train_step, self.model_config)
         self.inference = partial(inference, self.model_config)
-        self.get_loss_fn = get_loss_fn
 
-    def eval_step(self, batch: Tuple[Array], cls_hits=None):
-        # Return the accuracy for a single batch
-        batch = batch[0] if isinstance(batch[0], tuple) else batch
-        if hasattr(self, "class_hitting"):
-            assert isinstance(
-                cls_hits, dict
-            ), "\nDictionary to collect class-instance hits required.\n"
-            X, y = batch
-            logits = self.inference(self.state, X, self.rng)
-            loss = optax.softmax_cross_entropy(logits, y).mean()
-            batch_hits = getattr(utils, "class_hits")(logits, y)
-            acc = self.collect_hits(cls_hits=cls_hits, batch_hits=batch_hits)
-        else:
-            loss_fn = self.get_loss_fn(self.state, self.model_config, train=False)
-            if self.model_config["type"].lower() == "resnet":
-                loss, aux = loss_fn(self.state.mle_params, batch, False)
-            elif self.model_config["type"].lower() == "vit":
-                loss, aux = loss_fn(self.state.mle_params, batch, self.rng, False)
-            else:
-                loss, aux = loss_fn(self.state.mle_params, batch)
-            acc = self.compute_accuracy(batch, aux)
+    def eval_step(self, batch: Tuple[Array], cls_hits: Dict[int, int]):
+        X, y = batch
+        logits = self.inference(self.state, X=X, rng=self.rng)
+        loss = optax.softmax_cross_entropy(logits, y).mean()
+        batch_hits = utils.class_hits(logits, y)
+        acc = self.collect_hits(cls_hits=cls_hits, batch_hits=batch_hits)
         return loss.item(), acc
 
-    def compute_accuracy(self, batch, aux, cls_hits=None) -> Array:
+    def compute_accuracy(self, batch: Tuple[Array], aux, cls_hits: Dict[int, int]) -> Array:
         logits = aux[0] if isinstance(aux, tuple) else aux
-        _, y = batch[0] if isinstance(batch[0], tuple) else batch
-        if hasattr(self, "class_hitting"):
-            assert isinstance(
-                cls_hits, dict
-            ), "\nDictionary to collect class-instance hits required.\n"
-            batch_hits = getattr(utils, "class_hits")(logits, y)
-            acc = self.collect_hits(
-                cls_hits=cls_hits,
-                batch_hits=batch_hits,
-            )
-        elif self.model_config["task"] in ["mle", "mtl"]:
-            acc = getattr(utils, "accuracy")(logits, y)
+        _, y = batch
+        batch_hits = utils.class_hits(logits, y)
+        acc = self.collect_hits(
+            cls_hits=cls_hits,
+            batch_hits=batch_hits,
+        )
         return acc
 
     @staticmethod
@@ -388,39 +242,24 @@ class OOOTrainer:
 
     def train_epoch(self, batches: Iterator, train: bool) -> Tuple[float, float]:
         """Take a step over each mini-batch in the (train or val) generator."""
-        if hasattr(self, "class_hitting"):
-            cls_hits = defaultdict(list)
-        else:
-            batch_accs = jnp.zeros(len(batches))
+        cls_hits = defaultdict(list)
         batch_losses = jnp.zeros(len(batches))
-        # for step, batch in enumerate(batches):
-        for step, batch in tqdm(enumerate(batches), desc="Training", leave=False):
+        for step, batch in tqdm(enumerate(batches), desc="Batch", leave=False):
             if train:
                 self.state, loss, aux = self.train_step(
-                    state=self.state, batches=batch, rng=self.rng
+                    state=self.state, batch=batch, rng=self.rng
                 )
-                if hasattr(self, "class_hitting"):
-                    cls_hits = self.compute_accuracy(
-                        batch=batch, aux=aux, cls_hits=cls_hits
-                    )
-                else:
-                    acc = self.compute_accuracy(batch=batch, aux=aux)
-                    batch_accs = batch_accs.at[step].set(acc)
+                cls_hits = self.compute_accuracy(
+                    batch=batch, aux=aux, cls_hits=cls_hits
+                )
             else:
-                if hasattr(self, "class_hitting"):
-                    loss, cls_hits = self.eval_step(
-                        batch=batch,
-                        cls_hits=cls_hits,
-                    )
-                else:
-                    loss, acc = self.eval_step(batch)
-                    batch_accs = batch_accs.at[step].set(acc)
+                loss, cls_hits = self.eval_step(
+                    batch=batch,
+                    cls_hits=cls_hits,
+                )
             batch_losses = batch_losses.at[step].set(loss)
-        if hasattr(self, "class_hitting"):
-            cls_accs = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
-            avg_batch_acc = np.mean(list(cls_accs.values()))
-        else:
-            avg_batch_acc = jnp.mean(batch_accs)
+        cls_accs = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
+        avg_batch_acc = np.mean(list(cls_accs.values()))
         avg_batch_loss = jnp.mean(batch_losses)
         return (avg_batch_loss, avg_batch_acc)
 
@@ -481,12 +320,14 @@ class OOOTrainer:
             pickle.dump(metrics, f)
 
     def save_model(self, epoch=0):
-        # Save current model at certain training iteration
-        target = {"params": {"mle_params": self.state.mle_params}}
-        if self.model_config["task"] == "mtl":
-            target["params"].update({"ooo_params": self.state.ooo_params})
+        # save current model at certain training iteration
         if self.model_config["type"].lower() == "resnet":
-            target.update({"params": {"batch_stats": self.state.batch_stats}})
+            target = {
+                "params": self.state.params,
+                "batch_stats": self.state.batch_stats,
+            }
+        else:
+            target = self.state.params
         checkpoints.save_checkpoint(
             ckpt_dir=self.dir_config.log_dir, target=target, step=epoch, overwrite=True
         )
@@ -499,29 +340,23 @@ class OOOTrainer:
             )
             self.state = TrainState.create(
                 apply_fn=self.model.apply,
-                mle_params=state_dict["params"]["mle_params"],
-                batch_stats=state_dict["params"]["batch_stats"],
+                mle_params=state_dict["params"],
+                batch_stats=state_dict["batch_stats"],
                 tx=self.state.tx
                 if self.state
                 else optax.sgd(self.optimizer_config.lr, momentum=0.9),
-                ooo_params=state_dict["params"]["ooo_params"]
-                if "ooo_params" in state_dict["params"]
-                else None,
             )
         else:
-            state_dict = checkpoints.restore_checkpoint(
+            params = checkpoints.restore_checkpoint(
                 ckpt_dir=self.dir_config.log_dir, target=None
             )
             self.state = TrainState.create(
                 apply_fn=self.model.apply,
-                mle_params=state_dict["params"]["mle_params"],
+                params=params,
                 tx=self.state.tx
                 if self.state
                 else optax.adam(self.optimizer_config.lr),
                 batch_stats=None,
-                ooo_params=state_dict["params"]["ooo_params"]
-                if "ooo_params" in state_dict["params"]
-                else None,
             )
 
     def __len__(self) -> int:

@@ -19,14 +19,20 @@ def get_configs(args, **kwargs):
     data_config.class_probs = 0.8
     # minimum number of instances per class
     data_config.min_samples = args.min_samples
+    # number of classes that occur frequently in the data
+    data_config.n_frequent_classes = 3
     # whether to balance mini-batches
     data_config.sampling = args.sampling
+    # maximum number of triplets
+    data_config.max_triplets = args.max_triplets
     # input dimensionality
     data_config.input_dim = kwargs.pop("input_dim")
     # average number of instances per class
     M = kwargs.pop("n_samples")
     data_config.n_samples = M
-    data_config.batch_size = kwargs.pop("batch_size")
+
+    data_config.ooo_batch_size = kwargs.pop("ooo_batch_size")
+    data_config.main_batch_size = kwargs.pop("main_batch_size")
 
     model_config = config_dict.ConfigDict()
     model_config.type = re.compile(r"[a-zA-Z]+").search(args.network).group()
@@ -37,16 +43,11 @@ def get_configs(args, **kwargs):
         model_config.depth = ""
 
     model_config.weight_decay = 1e-3
+    model_config.sparsity_strength = 1e-2
     model_config.n_classes = args.n_classes
     model_config.task = args.task
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
-
-    if args.mle_loss == "weighted":
-        w = get_class_weights(M, args.n_classes, args.min_samples)
-        model_config.weights = w
-    else:
-        model_config.weights = None
 
     optimizer_config = config_dict.ConfigDict()
     optimizer_config.name = args.optim

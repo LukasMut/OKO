@@ -3,6 +3,7 @@
 
 from collections import defaultdict
 from functools import partial
+from tkinter.tix import Tree
 from typing import Any, Dict, List, Tuple
 
 import flax
@@ -35,18 +36,6 @@ def accuracy(logits: Array, targets: Array) -> Array:
     )
 
 
-@jax.jit
-def permutation_centropy(logits: Array, y_perms: Array) -> Array:
-    centropy = getattr(optax, "softmax_cross_entropy")
-    loss = (vmap(lambda y_hat, y: centropy(y_hat, y).mean())(logits, y_perms)).mean()
-    return loss
-
-
-def permutation_accuracy(logits: Array, y_perms: Array) -> Array:
-    acc = jnp.mean(vmap(accuracy)(logits, y_perms))
-    return acc
-
-
 def class_hits(logits: Array, targets: Array) -> Dict[int, List[int]]:
     """Compute the per-class accuracy for imbalanced datasets."""
     y_hat = logits.argmax(axis=-1)
@@ -69,39 +58,10 @@ def l2_reg(params: FrozenDict, lmbda: float = 1e-3) -> float:
     return weight_penalty
 
 
-@jax.jit
-def inductive_bias(
-    finetuned_params: FrozenDict, pretrained_params: FrozenDict, lmbda: float = 1e-4
-) -> float:
-    """Keep finetuned params close to pretrained params."""
-    # NOTE: sum((x_{i} - x_{j}) ** 2) = ||x_{i} - x_{j}||_{2}^{2}
-    pretrained_params = jax.tree_leaves(pretrained_params)
-    finetuned_params = jax.tree_leaves(finetuned_params)
-    weight_l2 = sum(
-        jnp.sum((x_i - x_j) ** 2)
-        for x_i, x_j in zip(pretrained_params, finetuned_params)
-        if (x_i.ndim > 1 and x_j.ndim > 1)
-    )
-    bias = lmbda * 0.5 * weight_l2
-    return bias
-
-
 def cnn_predict(
-    state: FrozenDict, params: FrozenDict, X: Array, task: str, rng: Array = None
+    state: FrozenDict, params: FrozenDict, X: Array, train: bool = True
 ) -> Array:
-    """
-    if task == 'ooo':
-        _, dropout_apply_rng = random.split(rng)
-        logits = state.apply_fn(
-            {"params": params},
-            X,
-            task=task,
-            rngs={"dropout": dropout_apply_rng},
-        )
-        return logits
-    else:
-    """
-    return state.apply_fn({"params": params}, X, task=task)
+    return state.apply_fn({"params": params}, X, train=train)
 
 
 def resnet_predict(
@@ -109,7 +69,6 @@ def resnet_predict(
     params: FrozenDict,
     X: Array,
     train: bool,
-    task: str,
 ) -> Tuple[Array, State]:
     if train:
         logits, new_state = state.apply_fn(
@@ -117,7 +76,6 @@ def resnet_predict(
             X,
             mutable=["batch_stats"] if train else False,
             train=train,
-            task=task,
         )
         return logits, new_state
     else:
@@ -126,7 +84,6 @@ def resnet_predict(
             X,
             mutable=["batch_stats"] if train else False,
             train=train,
-            task=task,
         )
         return logits
 
@@ -137,7 +94,6 @@ def vit_predict(
     rng: Array,
     X: Array,
     train: bool,
-    task: str,
 ) -> Tuple[Array, Array]:
     rng, dropout_apply_rng = random.split(rng)
     logits = state.apply_fn(
@@ -145,203 +101,48 @@ def vit_predict(
         X,
         train=train,
         rngs={"dropout": dropout_apply_rng},
-        task=task,
     )
     return logits, rng
 
 
-def mle_loss_fn_vit(
+@jax.jit
+def loss_fn_custom(
     state: FrozenDict,
     params: FrozenDict,
     batch: Tuple[Array, Array],
-    rng=None,
-    train: bool = True,
-    weights: Array = None,
 ) -> Tuple[Array, Tuple[Array]]:
-    """MLE loss function used during finetuning."""
     X, y = batch
-    logits, rng = vit_predict(
-        state=state, params=params, rng=rng, X=X, train=train, task="mle"
-    )
-    if isinstance(weights, Array):
-        y *= weights
-    loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
-    aux = (logits, rng)
-    return loss, aux
+    X = rearrange(X, "b k h w c -> (b k) h w c")
+    logits = cnn_predict(state=state, params=params, X=X)
+    loss = optax.softmax_cross_entropy(logits, y).mean()
+    return loss, logits
 
 
-def mle_loss_fn_resnet(
+def loss_fn_resnet(
     state: FrozenDict,
     params: FrozenDict,
     batch: Tuple[Array, Array],
     train: bool = True,
-    weights: Array = None,
 ) -> Tuple[Array, Tuple[Array]]:
-    """MLE loss function used during finetuning."""
     X, y = batch
-    logits, new_state = resnet_predict(
-        state=state, params=params, X=X, train=train, task="mle"
-    )
-    if isinstance(weights, Array):
-        y *= weights
-    loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
+    X = rearrange(X, "b k h w c -> (b k) h w c")
+    logits, new_state = resnet_predict(state=state, params=params, X=X, train=train)
+    loss = optax.softmax_cross_entropy(logits, y).mean()
     aux = (logits, new_state)
     return loss, aux
 
 
-@jax.jit
-def mle_loss_fn_custom(
+def loss_fn_vit(
     state: FrozenDict,
-    params: FrozenDict,
-    batch: Tuple[Array, Array],
-    weights: Array = None,
-) -> Tuple[Array, Tuple[Array]]:
-    """MLE loss function used during finetuning."""
-    X, y = batch
-    logits = cnn_predict(state=state, params=params, X=X, task="mle")
-    if isinstance(weights, Array):
-        y *= weights
-    loss = optax.softmax_cross_entropy(logits=logits, labels=y).mean()
-    return loss, logits
-
-
-@jax.jit
-def cnn_symmetrize(
-    state: FrozenDict,
-    params: FrozenDict,
-    batch: Tuple[Array],
-    rng: Array,
-    p: Array,
-) -> Tuple[Array]:
-    # symmetrize the neural network function
-    # to enforce some sort of permutation invariance
-    X, y = batch
-    triplet_perm = X[:, p, :, :, :]
-    triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
-    # logits = cnn_predict(state, params, triplet_perm, task="ooo", rng=rng)
-    logits = cnn_predict(state, params, triplet_perm, task="ooo")
-    return logits, y[:, p]
-
-
-# @jax.jit
-def ooo_loss_fn_custom(
-    state: FrozenDict,
-    perms: Array,
-    params: FrozenDict,
-    batch: Tuple[Array, Array],
-    weights: Array = None,
-) -> Tuple[Array, Tuple[Array]]:
-    """Loss function to predict the odd-one-out in a triplet of images."""
-    # TODO: investigate whether two or three permutations work better
-    # NOTE: more than two or three permutations are computationally too expensive
-    positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=6, replace=False)
-    )
-    rng = None  # jax.random.PRNGKey(np.random.randint(low=0, high=1e9, size=1)[0])
-    logits, y_perms = vmap(partial(cnn_symmetrize, state, params, batch, rng))(
-        perms[positions]
-    )
-
-    loss = permutation_centropy(logits=logits, y_perms=y_perms)
-    acc = permutation_accuracy(logits=logits, y_perms=y_perms)
-
-    """
-    loss = optax.softmax_cross_entropy(logits, y_perms).mean()
-    acc = accuracy(logits, y_perms)
-    """
-    return loss, (acc)
-
-
-def resnet_symmetrize(
-    state: FrozenDict,
-    params: FrozenDict,
-    batch: Tuple[Array],
-    train: bool,
-    p: Array,
-) -> Tuple[Array, Array, State]:
-    # symmetrize ResNet to enforce permutation invariance
-    X, y = batch
-    triplet_perm = X[:, p, :, :, :]
-    triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
-    logits, new_state = resnet_predict(
-        state=state, params=params, X=triplet_perm, train=train, task="ooo"
-    )
-    return logits, y[:, p], new_state
-
-
-def ooo_loss_fn_resnet(
-    state: FrozenDict,
-    perms: Array,
-    params: FrozenDict,
-    batch: Tuple[Array, Array],
-    train: bool = True,
-    weights: Array = None,
-) -> Tuple[Array, Tuple[Array]]:
-    """Loss function to predict the odd-one-out in a triplet of images."""
-    # TODO: investigate whether two or three permutations work better
-    # NOTE: more than two or three permutations are computationally too expensive
-    positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=4, replace=False)
-    )
-    logits, y_perms, new_state = vmap(
-        partial(resnet_symmetrize, state, params, batch, train)
-    )(perms[positions])
-    """
-    loss = permutation_centropy(logits=logits, y_perms=y_perms)
-    acc = permutation_accuracy(logits=logits, y_perms=y_perms)
-    """
-    loss = optax.softmax_cross_entropy(logits, y_perms).mean()
-    acc = accuracy(logits, y_perms)
-    aux = (acc, new_state)
-    return loss, aux
-
-
-def vit_symmetrize(
-    state: FrozenDict,
-    params: FrozenDict,
-    batch: Array,
-    rng: Array,
-    train: bool,
-    p: Array,
-) -> Tuple[Array, Array, Array]:
-    # symmetrize ViT to enforce permutation invariance
-    X, y = batch
-    triplet_perm = X[:, p, :, :, :]
-    triplet_perm = rearrange(triplet_perm, "b k h w c -> (b k) h w c")
-    logits, rng = vit_predict(
-        state=state,
-        params=params,
-        rng=rng,
-        X=triplet_perm,
-        train=train,
-        task="ooo",
-    )
-    return logits, y[:, p], rng
-
-
-def ooo_loss_fn_vit(
-    state: FrozenDict,
-    perms: Array,
     params: FrozenDict,
     batch: Tuple[Array, Array],
     rng=None,
     train: bool = True,
-    weights: Array = None,
 ) -> Tuple[Array, Tuple[Array]]:
-    """Loss function to predict the odd-one-out in a triplet of images."""
-    # TODO: investigate whether two or three permutations work better
-    # NOTE: more than two or three permutations are computationally too expensive
-    positions = jax.device_put(
-        np.random.choice(np.arange(perms.shape[0]), size=4, replace=False)
-    )
-    logits, y_perms, rng = vmap(
-        partial(vit_symmetrize, state, params, batch, rng, train)
-    )(perms[positions])
-    """
-    loss = permutation_centropy(logits=logits, y_perms=y_perms)
-    acc = permutation_accuracy(logits=logits, y_perms=y_perms)
-    """
-    loss = optax.softmax_cross_entropy(logits, y_perms).mean()
-    acc = accuracy(logits, y_perms)
-    aux = (acc, rng[0])
+    X, y = batch
+    X = rearrange(X, "b k h w c -> (b k) h w c")
+    logits, rng = vit_predict(
+        state=state, params=params, rng=rng, X=X, train=train)
+    loss = optax.softmax_cross_entropy(logits, y).mean()
+    aux = (logits, rng)
     return loss, aux

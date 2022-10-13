@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from ast import Num
 import jax.numpy as jnp
 import flax.linen as nn
 
 from typing import Sequence
 from .triplet import TripletHead
 
-# from .vit_triplet import TripletHead
 from .modules import Identity, Normalization, Sigmoid
 from utils import TASKS
 
@@ -62,9 +62,7 @@ class CNN(nn.Module):
 class Custom(nn.Module):
     encoder_widths: Sequence[int]
     source: str
-    task: str
-    num_classes: int = None
-    triplet_dim: int = None
+    num_classes: int
     capture_intermediates: bool = False
 
     def setup(self):
@@ -73,50 +71,15 @@ class Custom(nn.Module):
             source=self.source,
             capture_intermediates=self.capture_intermediates,
         )
-
-        if self.task == "mtl":
-            self.mle_head, self.ooo_head = self.make_head()
-        elif self.task == "mle":
-            self.mle_head = self.make_head()
-        else:
-            raise ValueError(
-                f"\nOutput heads implemented only for the following tasks: {TASKS}.\n"
-            )
-
-    @nn.nowrap
-    def make_head(self):
-        """Create target task specific MLP head."""
-        if self.task == "mle":
-            assert isinstance(
-                self.num_classes, int
-            ), "\nNumber of classes in dataset required.\n"
-            head = nn.Dense(self.num_classes, name="mlp_head")
-        else:
-            assert isinstance(
-                self.num_classes, int
-            ), "\nNumber of classes in dataset required.\n"
-            assert isinstance(
-                self.triplet_dim, int
-            ), "\nDimensionality of triplet head bottleneck required.\n"
-            mle_head = nn.Dense(self.num_classes, name="mlp_head")
-            ooo_head = TripletHead(
-                backbone="custom",
-                triplet_dim=self.triplet_dim,
-                capture_intermediates=self.capture_intermediates,
-            )
-            return mle_head, ooo_head
-        return head
+        self.head = TripletHead(
+            backbone="custom",
+            num_classes=self.num_classes,
+        )
 
     @nn.compact
-    def __call__(self, x: Array, task=None) -> Array:
+    def __call__(self, x: Array, train:bool=True) -> Array:
         x = self.encoder(x)
         if self.capture_intermediates:
             self.sow("intermediates", "latent_reps")
-        if self.task == "mle":
-            out = self.mle_head(x)
-        else:
-            assert isinstance(
-                task, str
-            ), "\nIn MTL, current task needs to be provided.\n"
-            out = getattr(self, f"{task}_head")(x)
+        out = self.head(x, train)
         return out

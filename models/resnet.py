@@ -86,47 +86,15 @@ class ResNet(nn.Module):
     dtype: Any = jnp.float32
     act: Callable = nn.relu
     conv: ModuleDef = nn.Conv
-    triplet_dim: int = None
     capture_intermediates: bool = False
 
     def setup(self):
-        self.mlp_head = self.make_head()
-
-        if self.task == "mtl":
-            self.mle_head, self.ooo_head = self.make_head()
-        elif self.task == "mle":
-            self.mle_head = self.make_head()
-        else:
-            raise ValueError(
-                f"\nOutput heads implemented only for the following tasks: {TASKS}.\n"
-            )
-
-    @nn.nowrap
-    def make_head(self):
-        """Create target task specific MLP head."""
-        if self.task == "mle":
-            assert isinstance(
-                self.num_classes, int
-            ), "\nNumber of classes in dataset required.\n"
-            head = nn.Dense(self.num_classes, name="mlp_head")
-        else:
-            assert isinstance(
-                self.num_classes, int
-            ), "\nNumber of classes in dataset required.\n"
-            assert isinstance(
-                self.triplet_dim, int
-            ), "\nDimensionality of triplet head bottleneck required.\n"
-            mle_head = nn.Dense(self.num_classes)
-            ooo_head = TripletHead(
+        self.head = TripletHead(
                 backbone="resnet",
-                triplet_dim=self.triplet_dim,
-                capture_intermediates=self.capture_intermediates,
+                num_classes=self.num_classes,
             )
-            return mle_head, ooo_head
-        return head
-
     @nn.compact
-    def __call__(self, x: Array, train: bool = True, task=None) -> Array:
+    def __call__(self, x: Array, train: bool = True) -> Array:
         conv = partial(self.conv, use_bias=False, dtype=self.dtype)
         norm = partial(
             nn.BatchNorm,
@@ -153,15 +121,9 @@ class ResNet(nn.Module):
                     act=self.act,
                 )(x)
         x = x.mean(axis=(1, 2))
-        if self.task == "mle":
-            out = self.mle_head(x)
-        else:
-            if self.capture_intermediates:
-                self.sow("intermediates", "latent_reps")
-            assert isinstance(
-                task, str
-            ), "\nIn MTL, current task needs to be provided.\n"
-            out = getattr(self, f"{task}_head")(x)
+        if self.capture_intermediates:
+            self.sow("intermediates", "latent_reps")        
+        out = self.head(x, train)
         out = jnp.asarray(out, self.dtype)
         return out
 

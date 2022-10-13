@@ -47,8 +47,7 @@ class DataPartitioner:
         self.load_data(self.data_path)
         self.n_classes = self.classes.shape[0]
 
-        if self.dataset.startswith("cifar10"):
-            self.augmenter = self.get_augmentation()
+        if self.dataset in ["cifar10", "cifar100", "imagenet"]:
             self.transform = self.get_transform()
 
     def load_data(self, data_path: str) -> None:
@@ -99,22 +98,6 @@ class DataPartitioner:
         )
         return transform
 
-    def get_augmentation(self) -> Any:
-        """Create image data augmentation policy."""
-        means, stds = self.get_statistics(self.dataset)
-        augmenter = T.Compose(
-            [
-                T.ToPILImage(),
-                # T.AutoAugment(getattr(T.AutoAugmentPolicy,
-                # dataset.upper())),
-                T.RandAugment(),
-                T.RandomHorizontalFlip(),
-                T.ToTensor(),
-                T.Normalize(mean=means, std=stds),
-            ]
-        )
-        return augmenter
-
     def get_instances(self, hist):
         class_samples = {}
         for k in self.classes:
@@ -155,52 +138,28 @@ class DataPartitioner:
         ]
         return augmentations
 
-    def get_subset(self, max_instances: int = 5000) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def get_subset(self) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Get a few-shot subset of the data."""
-        sampled_instances, hist = self.sample_instances()
+        sampled_instances, _ = self.sample_instances()
         samples = []
-        # if the total number of data points (e.g., images) is smaller
-        # than the maximum number of instances per class (set to 5k),
-        # add as man data augmentations as the difference between the
-        # number of instances per class and the total number of
-        # data points is large (i.e, if this difference is large,
-        # many augmentations for class instances will be added)
-        # max = hist.sum() if hist.sum() < max_instances else hist.max()
-        max = hist.max()
-        for cls, cls_instances in sampled_instances.items():
-            num_instances = hist[cls]
+        for cls_instances in sampled_instances.values():
             cls_samples = []
-            if hasattr(self, "augmenter"):
-                raw_cls_samples = []
             for idx in cls_instances:
                 img = self.images[idx]
                 label = self.labels[idx]
-                if hasattr(self, "augmenter"):
-                    raw_cls_samples.append((img, label))
                 if hasattr(self, "transform"):
                     img = self.transform(img).permute(1, 2, 0).numpy()
                 cls_samples.append((img, label))
-            if hasattr(self, "augmenter"):
-                if num_instances < max:
-                    diff = abs(max - num_instances)
-                    augmentations = self.apply_augmentations(
-                        cls_samples=raw_cls_samples,
-                        diff=diff,
-                    )
-                    cls_samples.extend(augmentations)
             samples.extend(cls_samples)
         images, labels = zip(*samples)
         images = jnp.array(images)
         labels = jnp.array(labels)
-        # flatten image matrices
-        # images = images.reshape(images.shape[0], -1)
         # create one-hot labels
         labels = jax.nn.one_hot(x=labels, num_classes=jnp.max(labels) + 1)
         assert images.shape[0] == labels.shape[0]
         return (images, labels)
 
     @staticmethod
-    @jax.jit
     def reduce_set(N, addition):
         # return jnp.array(list(filter(lambda i: i not in addition, range(N))))
         reduced_indices = list(range(N))
@@ -209,7 +168,6 @@ class DataPartitioner:
         return jnp.array(reduced_indices)
 
     @staticmethod
-    @jax.jit
     def get_set_addition(y_train, val_classes, seed):
         return jnp.array(
             [
@@ -224,17 +182,17 @@ class DataPartitioner:
 
     def adjust_splits(self, X_train, y_train, X_val, y_val, val_classes):
         """Adjust train-val splits to make sure that at least one example per class is in the val set."""
-        addition = self.get_set_addition(y_train, val_classes, self.rnd_seed)
+        addition = self.get_set_addition(y_train, val_classes, self.seed)
         X_addition = X_train[addition]
         y_addition = y_train[addition]
         # TODO: find a way to add examples of missing classes to the val set without copying from and reducing the train set
-        # reduced_indices = reduce_set(X_train.shape[0], addition)
-        # X_train_adjusted = X_train[reduced_indices]
-        # y_train_adjusted = y_train[reduced_indices]
+        reduced_indices = self.reduce_set(X_train.shape[0], addition)
+        X_train_adjusted = X_train[reduced_indices]
+        y_train_adjusted = y_train[reduced_indices]
         X_val_adjusted = jnp.concatenate((X_val, X_addition), axis=0)
         y_val_adjusted = jnp.concatenate((y_val, y_addition), axis=0)
-        # return X_train_adjusted, y_train_adjusted, X_val_adjusted, y_val_adjusted
-        return X_train, y_train, X_val_adjusted, y_val_adjusted
+        return X_train_adjusted, y_train_adjusted, X_val_adjusted, y_val_adjusted
+        # return X_train, y_train, X_val_adjusted, y_val_adjusted
 
     def create_splits(
         self, images, labels
@@ -278,7 +236,7 @@ class DataPartitioner:
             out_path,
             f"{self.n_samples:d}_samples",
             self.distribution,
-            f"seed{self.rnd_seed:02d}",
+            f"seed{self.seed:02d}",
         )
         if not os.path.exists(out_path):
             print(f"\n...Creating output directory: {out_path}\n")
@@ -288,285 +246,3 @@ class DataPartitioner:
         except FileNotFoundError:
             print("\nThere is no file to be removed.\n")
         return out_path
-
-
-@dataclass
-class TripletData(data.Dataset):
-    dataset: str
-    data_path: str
-    n_samples: int
-    distribution: int
-    seed: int
-    min_samples: int = None
-    train: bool = True
-    train_frac: float = 0.85
-
-    def __post_init__(self) -> None:
-        super().__init__()
-        random.seed(self.seed)
-        np.random.seed(self.seed)
-
-        if self.distribution == "heterogeneous":
-            assert isinstance(
-                self.min_samples, int
-            ), "\nMinimum number of samples per class must be defined.\n"
-
-        self.load_data(self.data_path)
-        self.n_classes = self.classes.shape[0]
-
-        if self.dataset.startswith("cifar10"):
-            self.augmenter = self.get_augmentation()
-            self.transform = self.get_transform()
-
-        images, labels = self.get_subset()
-        self.data, self.label = self.create_splits(images, labels)
-
-    def load_data(self, data_path: str) -> None:
-        """Load original (full) dataset."""
-        if self.dataset == "cifar10":
-            dataset = np.load(os.path.join(data_path, "training.npz"))
-            self.images = dataset["data"]
-            self.labels = dataset["labels"]
-
-        else:
-            dataset = torch.load(os.path.join(data_path, "training.pt"))
-            self.images = dataset[0].numpy()
-            self.labels = dataset[1].numpy()
-        self.classes = np.unique(self.labels)
-
-    @staticmethod
-    def get_statistics(dataset: str) -> Tuple[List[float], List[float]]:
-        """Get means and STDs of training data for CIFAR-10 and SVHN."""
-        if dataset == "cifar10":
-            means = [0.4914, 0.4822, 0.4465]
-            # stds = [0.24703, 0.24349, 0.26159]
-            stds = [0.2023, 0.1994, 0.2010]
-        elif dataset == "cifar100":
-            means = [0.5071, 0.4865, 0.44092]
-            stds = [0.2673, 0.2564, 0.2761]
-        else:
-            raise Exception(
-                "\nWe do not want to apply image transformations to MNIST-like datasets.\n"
-            )
-        return means, stds
-
-    def get_transform(self) -> Any:
-        """Compose image data transformations."""
-        means, stds = self.get_statistics(self.dataset)
-        transform = T.Compose(
-            [T.ToPILImage(), T.ToTensor(), T.Normalize(mean=means, std=stds)]
-        )
-        return transform
-
-    def get_augmentation(self) -> Any:
-        """Create image data augmentation policy."""
-        means, stds = self.get_statistics(self.dataset)
-        augmenter = T.Compose(
-            [
-                T.ToPILImage(),
-                # T.AutoAugment(getattr(T.AutoAugmentPolicy,
-                # dataset.upper())),
-                T.RandAugment(),
-                T.RandomHorizontalFlip(),
-                T.ToTensor(),
-                T.Normalize(mean=means, std=stds),
-            ]
-        )
-        return augmenter
-
-    def get_instances(self, hist):
-        class_instances = {
-            k: np.random.choice(
-                np.where(self.labels == k)[0], size=hist[k], replace=False
-            )
-            for k in self.classes
-        }
-        return class_instances
-
-    @staticmethod
-    def get_sample(n_classes: int, n_totals: int):
-        def add_remainder(sample: np.ndarray, n_classes: int) -> np.ndarray:
-            remainder = np.array(
-                [y for y in np.arange(n_classes) if y not in np.unique(sample)]
-            )
-            sample = np.hstack((sample, remainder))
-            return sample
-
-        def get_class_distribution(T: int, k: int = 3, p: float = 0.8) -> Array:
-            """With probabilities (p/k) and (1-p)/(T-k) sample k frequent and T-k rare classes respectively."""
-            distribution = np.zeros(T)
-            p_k = p / k
-            q_k = (1 - p) / (T - k)
-            frequent_classes = np.random.choice(T, size=k, replace=False)
-            rare_classes = np.asarray(list(set(range(T)).difference(frequent_classes)))
-            distribution[frequent_classes] += p_k
-            distribution[rare_classes] += q_k
-            return distribution
-
-        class_distribution = get_class_distribution(n_classes)
-        sample = np.random.choice(
-            n_classes, size=n_totals, replace=True, p=class_distribution
-        )
-        sample = add_remainder(sample, n_classes)
-
-        return sample
-
-    @staticmethod
-    def get_histogram(sample: np.ndarray, min_samples: int) -> np.ndarray:
-        _, hist = zip(
-            *sorted(Counter(sample).items(), key=lambda kv: kv[0], reverse=False)
-        )
-        hist = np.array(hist)
-        # guarantee that there are at least C (= min_samples) examples per class
-        hist = np.where(hist < min_samples, hist + abs(hist - min_samples), hist)
-        return hist
-
-    def sample_instances(self) -> Tuple[Dict[int, np.ndarray], np.ndarray]:
-        """Randomly sample class instances as determined per our exponential function."""
-        if self.distribution == "heterogeneous":
-            n_totals = self.n_samples * self.n_classes
-            sample = self.get_sample(self.n_classes, n_totals)
-            hist = self.get_histogram(sample, self.min_samples)
-        else:
-            hist = np.ones_like(self.classes, dtype=int) * self.n_samples
-        class_instances = self.get_instances(hist)
-        return class_instances, hist
-
-    def apply_augmentations(
-        self, cls_samples: List[tuple], diff: int
-    ) -> List[Tuple[np.ndarray, float]]:
-        """Apply image data augmentations."""
-        random_images, random_labels = zip(*random.choices(cls_samples, k=diff))
-        augmentations = [
-            (
-                self.augmenter(random_images[k]).permute(1, 2, 0).numpy(),
-                random_labels[k],
-            )
-            for k in range(diff)
-        ]
-        return augmentations
-
-    def get_subset(self, max_instances: int = 5000) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        """Get a few-shot subset of the data."""
-        sampled_instances, hist = self.sample_instances()
-        samples = []
-        # if the total number of data points (e.g., images) is smaller
-        # than the maximum number of instances per class (set to 5k),
-        # add as man data augmentations as the difference between the
-        # number of instances per class and the total number of
-        # data points is large (i.e, if this difference is large,
-        # many augmentations for class instances will be added)
-
-        # TODO: figure out what number of data augmentations is best
-        # max = hist.sum() if hist.sum() < max_instances else hist.max()
-        max = hist.max()
-        for cls, cls_instances in sampled_instances.items():
-            num_instances = hist[cls]
-            cls_samples = []
-            if hasattr(self, "augmenter"):
-                raw_cls_samples = []
-            for idx in cls_instances:
-                img = self.images[idx]
-                label = self.labels[idx]
-                if hasattr(self, "augmenter"):
-                    raw_cls_samples.append((img, label))
-                if hasattr(self, "transform"):
-                    img = self.transform(img).permute(1, 2, 0).numpy()
-                cls_samples.append((img, label))
-            if hasattr(self, "augmenter"):
-                if num_instances < max:
-                    diff = abs(max - num_instances)
-                    augmentations = self.apply_augmentations(
-                        cls_samples=raw_cls_samples,
-                        diff=diff,
-                    )
-                    cls_samples.extend(augmentations)
-            samples.extend(cls_samples)
-        images, labels = zip(*samples)
-        images = jnp.array(images)
-        labels = jnp.array(labels)
-        # flatten image matrices
-        # images = images.reshape(images.shape[0], -1)
-        # create one-hot labels
-        one_hot = lambda x, k: jnp.array(x[:, None] == jnp.arange(k), dtype=jnp.float32)
-        labels = one_hot(labels, jnp.max(labels) + 1)
-        assert images.shape[0] == labels.shape[0]
-        return (images, labels)
-
-    @staticmethod
-    def reduce_set(N, addition):
-        # return jnp.array(list(filter(lambda i: i not in addition, range(N))))
-        reduced_indices = list(range(N))
-        for i in addition:
-            reduced_indices.pop(reduced_indices.index(i))
-        return jnp.array(reduced_indices)
-
-    @staticmethod
-    def get_set_addition(y_train, val_classes, seed):
-        return jnp.array(
-            [
-                jax.random.choice(
-                    jax.random.PRNGKey(seed),
-                    jnp.where(jnp.nonzero(y_train)[-1] == k)[0],
-                ).item()
-                for k in range(y_train.shape[-1])
-                if k not in val_classes
-            ]
-        )
-
-    def adjust_splits(self, X_train, y_train, X_val, y_val, val_classes):
-        """Adjust train-val splits to make sure that at least one example per class is in the val set."""
-        addition = self.get_set_addition(y_train, val_classes, self.rnd_seed)
-        X_addition = X_train[addition]
-        y_addition = y_train[addition]
-        # TODO: find a way to add examples of missing classes to the val set without copying from and reducing the train set
-        # reduced_indices = reduce_set(X_train.shape[0], addition)
-        # X_train_adjusted = X_train[reduced_indices]
-        # y_train_adjusted = y_train[reduced_indices]
-        X_val_adjusted = jnp.concatenate((X_val, X_addition), axis=0)
-        y_val_adjusted = jnp.concatenate((y_val, y_addition), axis=0)
-        # return X_train_adjusted, y_train_adjusted, X_val_adjusted, y_val_adjusted
-        return X_train, y_train, X_val_adjusted, y_val_adjusted
-
-    def create_splits(
-        self, images, labels
-    ) -> Tuple[Tuple[jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray]]:
-        """Construct train and validation splits of the few-shot data subset."""
-        rnd_perm = np.random.permutation(np.arange(images.shape[0]))
-        X_train = images[rnd_perm[: int(len(rnd_perm) * self.train_frac)]]
-        y_train = labels[rnd_perm[: int(len(rnd_perm) * self.train_frac)]]
-        X_val = images[rnd_perm[int(len(rnd_perm) * self.train_frac) :]]
-        y_val = labels[rnd_perm[int(len(rnd_perm) * self.train_frac) :]]
-
-        assert X_train.shape[0] == y_train.shape[0]
-        assert X_val.shape[0] == y_val.shape[0]
-
-        train_classes = jnp.unique(jnp.nonzero(y_train)[-1])
-        val_classes = jnp.unique(jnp.nonzero(y_val)[-1])
-
-        if len(train_classes) > len(val_classes):
-            # make sure that at least one example per class is in the val set
-            X_train, y_train, X_val, y_val = self.adjust_splits(
-                X_train, y_train, X_val, y_val, val_classes
-            )
-
-        if self.train:
-            return X_train, y_train
-        else:
-            return X_val, y_val
-
-    def __len__(self) -> int:
-        return self.data.shape[0]
-
-    def __getitem__(self, idx) -> Tuple[Array, Array]:
-        X = self.data[idx]
-        y = self.label[idx]
-        return (X, y)
-
-    @property
-    def data(self):
-        return self.data
-
-    @property
-    def labels(self):
-        return self.label

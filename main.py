@@ -42,10 +42,13 @@ def parseargs():
     aa('--n_classes', type=int,
         help='number of classes in dataset')
     aa('--task', type=str,
-        choices=utils.TASKS,
         help='whether to perform triplet odd-one-out pretraining or standard mle training')
-    aa('--batch_sizes', type=int, nargs='+',
+    aa('--ooo_batch_sizes', type=int, nargs='+',
         help='number of triplets per mini-batch (i.e., number of subsamples x 3')
+    aa('--main_batch_sizes', type=int, nargs='+',
+        help='number of triplets per mini-batch (i.e., number of subsamples x 3')
+    aa('--max_triplets', type=int, default=None,
+        help='maximum number of triplets during each epoch')
     aa('--epochs', type=int, nargs='+',
         help='maximum number of epochs')
     aa('--etas', type=float, nargs='+',
@@ -70,9 +73,6 @@ def parseargs():
         help='whether to perform inference without stepping over the data')
     aa('--collect_reps', action='store_true',
         help='whether to store encoder latent representations')
-    aa('--mle_loss', type=str, default='standard',
-        choices=['standard', 'weighted'],
-        help='whether or not to compute a weighted version of the cross-entropy error')
     aa('--seeds', type=int, nargs='+',
         help='list of random seeds for cross-validating results over different random inits')
     args = parser.parse_args()
@@ -83,10 +83,11 @@ if __name__ == "__main__":
     # parse arguments
     args = parseargs()
     # get current combination of settings
-    (n_samples, epochs, batch_size, eta), rnd_seed = train.get_combination(
+    (n_samples, epochs, ooo_batch_size, main_batch_size, eta), rnd_seed = train.get_combination(
         samples=args.samples,
         epochs=args.epochs,
-        batch_sizes=args.batch_sizes,
+        ooo_batch_sizes=args.ooo_batch_sizes,
+        main_batch_sizes=args.main_batch_sizes,
         learning_rates=args.etas,
         seeds=args.seeds,
         )
@@ -110,7 +111,8 @@ if __name__ == "__main__":
         n_samples=n_samples,
         input_dim=input_dim,
         epochs=epochs, 
-        batch_size=batch_size,
+        ooo_batch_size=ooo_batch_size,
+        main_batch_size=main_batch_size,
         eta=eta,
         )
 
@@ -176,6 +178,6 @@ if __name__ == "__main__":
             data_config=data_config,
             dir_config=dir_config,
             distribution=args.distribution,    
-            batch_size=batch_size,
+            batch_size=main_batch_size,
             collect_reps=args.collect_reps,
         )

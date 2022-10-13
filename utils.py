@@ -100,12 +100,11 @@ def get_val_set(dataset, data_path) -> Tuple[jnp.ndarray, jnp.ndarray]:
 
 
 def get_full_dataset(partitioner: object) -> Tuple[Array, Array]:
-    # get full dataset
+    """Get the full dataset"""
     images = jnp.array(partitioner.images)
     if hasattr(partitioner, "transform"):
         transforms = partitioner.get_transform()
         images = jnp.array([transforms(img).permute(1, 2, 0).numpy() for img in images])
-    images = images.reshape(images.shape[0], -1)
     labels = partitioner.labels
     labels = jax.nn.one_hot(labels, jnp.max(labels) + 1)
     rnd_perm = np.random.permutation(np.arange(images.shape[0]))
@@ -126,6 +125,7 @@ def get_fewshot_subsets(
         min_samples=args.min_samples,
         train=True,
     )
+    """
     val_partitioner = DataPartitioner(
         dataset=args.dataset,
         data_path=args.data_path,
@@ -135,14 +135,23 @@ def get_fewshot_subsets(
         min_samples=args.min_samples,
         train=True,
     )
+    """
     if n_samples:
         # get a subset of the data with M samples per class
-        train_set = train_partitioner.get_subset()
-        val_set = val_partitioner.get_subset()
+        images, labels = train_partitioner.get_subset()
+        train_set, val_set = train_partitioner.create_splits(images, labels)
     else:
         train_set = get_full_dataset(train_partitioner)
-        if args.task.startswith("mle") and args.distribution == "heterogeneous":
-            val_set = get_full_dataset(train_partitioner)
+        val_partitioner = DataPartitioner(
+                        dataset=args.dataset,
+                        data_path=args.data_path,
+                        n_samples=n_samples,
+                        distribution=args.distribution,
+                        seed=rnd_seed,
+                        min_samples=args.min_samples,
+                        train=False,
+        )
+        val_set = get_full_dataset(val_partitioner)
     return train_set, val_set
 
 
