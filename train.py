@@ -244,7 +244,7 @@ def make_results_df(
     )
     results_current_run["cross-entropy"] = performance["loss"]
     results_current_run["training"] = model_config.task
-    results_current_run["n_samples"] = data_config.n_samples
+    results_current_run["n_samples"] = data_config.n_samples * data_config.n_classes
     results_current_run["n_frequent_classes"] = data_config.n_frequent_classes
     results_current_run["probability"] = data_config.class_probs
     return results_current_run

@@ -30,6 +30,7 @@ def get_configs(args, **kwargs):
     # average number of instances per class
     M = kwargs.pop("n_samples")
     data_config.n_samples = M
+    data_config.n_classes = args.n_classes
 
     data_config.ooo_batch_size = kwargs.pop("ooo_batch_size")
     data_config.main_batch_size = kwargs.pop("main_batch_size")
@@ -42,8 +43,7 @@ def get_configs(args, **kwargs):
     except AttributeError:
         model_config.depth = ""
 
-    model_config.weight_decay = 1e-3
-    model_config.sparsity_strength = 1e-2
+    model_config.weight_decay = 1e-4
     model_config.n_classes = args.n_classes
     model_config.task = args.task
     # TODO: enable half precision when running things on TPU
