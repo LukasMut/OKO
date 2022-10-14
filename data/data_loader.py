@@ -32,7 +32,7 @@ class DataLoader:
     train: bool = True
     class_subset: List[int] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.cpu_devices = jax.devices("cpu")
         self.num_gpus = 2
         self.device_num = random.choices(range(self.num_gpus))[0]
@@ -47,8 +47,6 @@ class DataLoader:
             self.X = jnp.expand_dims(self.X, axis=-1)
 
         self.num_classes = self.y.shape[-1]
-        # variables for odd-one-out auxiliary task
-        self.rng_seq = hk.PRNGSequence(self.seed)
         self.y_prime = jnp.nonzero(self.data[1])[-1]
         self.ooo_classes = np.unique(self.y_prime)
 
@@ -67,48 +65,47 @@ class DataLoader:
 
         self.create_functions()
 
-    def create_functions(self):
+    def create_functions(self) -> None:
+
+        def sample_double(classes: Array, q: float, key: Array) -> Array:
+            return jax.random.choice(key, classes, shape=(2,), replace=False, p=q)
 
         @partial(jax.jit, static_argnames=["seed"])
         def sample_doubles(seed: int, q=None) -> Array:
             """Sample pairs of objects from the same class."""
             key = jax.random.PRNGKey(seed)
             keys = jax.random.split(key, num=self.data_config.ooo_batch_size)
-
-            def sample_double(classes, q, key):
-                return jax.random.choice(key, classes, shape=(2,), replace=False, p=q)
-
-            return vmap(partial(sample_double, self.ooo_classes, q))(keys)
+            return vmap(partial(self.sample_double, q))(keys)
                
-        def unzip_pairs(
-            dataset: Array,
-            order: Array,
-            subset: range,
-        ) -> Tuple[Array, Array]:
+        def unzip_pairs(dataset: Array, subset: range) -> Tuple[Array, Array]:
             """Create tuples of data pairs (X, y)."""
-            X, y = zip(*[dataset[order[i]] for i in subset])
+            X, y = zip(*[dataset[i] for i in subset]) 
             X = jnp.stack(X, axis=0)
             y = jnp.stack(y, axis=0)
             return (X, y)
 
-        # jit functions for computational efficiency
-        self.sample_doubles = sample_doubles
-
-        if not self.train:
-            order = np.arange(len(self.dataset))
-            self.unzip_pairs = partial(unzip_pairs, self.dataset, order)
+        # jit or partially initialize functions for computational efficiency
+        if self.train:
+            self.sample_double = partial(sample_double, self.ooo_classes)
+            self.sample_doubles = sample_doubles
+        else:
+            self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
     @staticmethod
     def expand(doubles: Array) -> Tuple[Array, Array]:
-        pairs = np.apply_along_axis(np.random.choice, axis=1, arr=doubles)
-        triplets = np.c_[doubles, pairs]
+        pair_classes = np.apply_along_axis(np.random.choice, axis=1, arr=doubles)
+        triplets = np.c_[doubles, pair_classes]
+        triplets = np.apply_along_axis(np.random.permutation, axis=1, arr=triplets)
+        """
         ooo = np.array(
             [
                 np.where(triplet != double)[0][0]
-                for triplet, double in zip(triplets, pairs)
+                for triplet, double in zip(triplets, pair_classes)
             ]
         )
         return triplets, ooo, pairs
+        """
+        return triplets, pair_classes
 
     def sample_triplets(self, triplets: Array) -> Array:
         def sample_triplet(y_prime, triplet: Array) -> List[int]:
@@ -117,15 +114,6 @@ class DataLoader:
         return np.apply_along_axis(
             partial(sample_triplet, self.y_prime), arr=triplets, axis=1
         )
-
-    @staticmethod
-    @partial(jax.jit, static_argnames=["last_idx"])
-    def convert_labels(labels: Array, last_idx: int = 2) -> Array:
-        """Labels for cross-entropy and classification error are rotations of each other."""
-        first_conversion = jnp.where(labels != 1, labels - last_idx, labels)
-        converted_labels = jnp.where(first_conversion < 0, last_idx, first_conversion)
-        return converted_labels
-
     
     def stepping(self) -> Iterator:
         """Step over the entire training data in mini-batches of size B."""
@@ -148,8 +136,11 @@ class DataLoader:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         doubles_subset = self.sample_doubles(seed, q=q)
-        triplet_subset, ooo_subset, pair_classes = self.expand(doubles_subset)
+        # NOTE: the two lines below are necessary for performing a triplet odd-one-out task,
+        # using indexes rather than classes as possible choices
+        # triplet_subset, ooo_subset, pair_classes = self.expand(doubles_subset)
         # y = jax.nn.one_hot(x=ooo_subset, num_classes=3)
+        triplet_subset, pair_classes = self.expand(doubles_subset)
         y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
         triplet_subset = self.sample_triplets(triplet_subset)
         triplet_subset = triplet_subset.ravel()
@@ -169,8 +160,8 @@ class DataLoader:
         self,
     ) -> Tuple[Tuple[Array, Array], Tuple[Array, Array]]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
-        # q = np.exp(self.p / self.beta) / (np.exp(self.p / self.beta).sum())
-        q = None
+        q = np.exp(self.p / self.beta) / (np.exp(self.p / self.beta).sum())
+        # q = None
         for _ in range(self.num_batches):
             ooo_batch = self.sample_ooo_batch(q)
             yield ooo_batch
