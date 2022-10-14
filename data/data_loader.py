@@ -160,7 +160,7 @@ class DataLoader:
         for _ in range(self.num_batches):
             ooo_batch = self.sample_ooo_batch(q)
             yield ooo_batch
-        self.beta += 0.01
+        # self.beta += 0.01
 
     def __iter__(self) -> Iterator:
         if self.train:
