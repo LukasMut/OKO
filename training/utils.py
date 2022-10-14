@@ -2,17 +2,14 @@
 # -*- coding: utf-8 -*
 
 from collections import defaultdict
-from functools import partial
-from tkinter.tix import Tree
 from typing import Any, Dict, List, Tuple
 
 import flax
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
 from einops import rearrange
-from jax import random, vmap
+from jax import random
 
 Array = jnp.ndarray
 State = Any
@@ -141,8 +138,7 @@ def loss_fn_vit(
 ) -> Tuple[Array, Tuple[Array]]:
     X, y = batch
     X = rearrange(X, "b k h w c -> (b k) h w c")
-    logits, rng = vit_predict(
-        state=state, params=params, rng=rng, X=X, train=train)
+    logits, rng = vit_predict(state=state, params=params, rng=rng, X=X, train=train)
     loss = optax.softmax_cross_entropy(logits, y).mean()
     aux = (logits, rng)
     return loss, aux
