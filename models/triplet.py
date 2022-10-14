@@ -3,6 +3,7 @@
 
 __all__ = ["TripletHead"]
 
+import jax
 import flax.linen as nn
 import jax.numpy as jnp
 
@@ -15,6 +16,7 @@ Array = jnp.ndarray
 class TripletHead(nn.Module):
     backbone: str
     num_classes: int
+    k: int = 3
     dtype: Any = jnp.float32
 
     def setup(self):
@@ -28,13 +30,15 @@ class TripletHead(nn.Module):
             )
         else:
             self.query = nn.Dense(self.num_classes, name="triplet_query")
-        self.k = 3
+    
+    def attention(self, x: Array) -> Array:
+        return vmap(self.query, in_axes=1, out_axes=1)(x)
 
     @nn.compact
     def __call__(self, x: Array, train: bool = True) -> Array:
         if train:
             x = rearrange(x, "(n k) d -> n k d", n=x.shape[0] // self.k, k=self.k)
-            dots = vmap(self.query, in_axes=1, out_axes=1)(x)
+            dots = self.attention(x)
             out = dots.sum(axis=1)
         else:
             out = self.query(x)

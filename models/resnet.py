@@ -92,7 +92,7 @@ class ResNet(nn.Module):
         self.head = TripletHead(
                 backbone="resnet",
                 num_classes=self.num_classes,
-            )
+        )
     @nn.compact
     def __call__(self, x: Array, train: bool = True) -> Array:
         conv = partial(self.conv, use_bias=False, dtype=self.dtype)

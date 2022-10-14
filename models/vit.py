@@ -101,7 +101,7 @@ class ViT(nn.Module):
         self.head = TripletHead(
                 backbone="vit",
                 num_classes=self.num_classes,
-            )
+        )
 
     @nn.compact
     def __call__(
@@ -131,6 +131,7 @@ class ViT(nn.Module):
         else:
             # use classification token for inference
             cls = x[:, 0]
+
         if self.capture_intermediates:
             self.sow("intermediates", "latent_reps")
         out = self.head(cls, train)
