@@ -6,18 +6,17 @@ __all__ = ["DataLoader"]
 import copy
 import math
 import random
+from collections import Counter
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Iterator, List, Tuple
+from typing import Iterator, List, Tuple
 
-import haiku as hk
 import jax
 import jax.numpy as jnp
 import numpy as np
 from einops import rearrange
 from jax import vmap
 from ml_collections import config_dict
-from collections import Counter
 
 Array = jnp.ndarray
 FrozenDict = config_dict.FrozenConfigDict
@@ -50,23 +49,28 @@ class DataLoader:
         self.y_prime = jnp.nonzero(self.data[1])[-1]
         self.ooo_classes = np.unique(self.y_prime)
 
-        if self.train: 
-            self.num_batches = math.ceil(self.data_config.max_triplets / self.data_config.ooo_batch_size)
+        if self.train:
+            self.num_batches = math.ceil(
+                self.data_config.max_triplets / self.data_config.ooo_batch_size
+            )
         else:
             self.dataset = list(zip(self.X, self.y))
-            self.num_batches = math.ceil(len(self.dataset) / self.data_config.main_batch_size)
+            self.num_batches = math.ceil(
+                len(self.dataset) / self.data_config.main_batch_size
+            )
             self.remainder = len(self.dataset) % self.data_config.main_batch_size
 
         self.y_flat = np.nonzero(self.y)[1]
-        occurrences = dict(sorted(Counter(self.y_flat.tolist()).items(), key = lambda kv:kv[0]))
+        occurrences = dict(
+            sorted(Counter(self.y_flat.tolist()).items(), key=lambda kv: kv[0])
+        )
         self.hist = np.asarray(list(occurrences.values()))
         self.p = self.hist / self.hist.sum()
-        self.beta = .1
+        self.beta = 0.1
 
         self.create_functions()
 
     def create_functions(self) -> None:
-
         def sample_double(classes: Array, q: float, key: Array) -> Array:
             return jax.random.choice(key, classes, shape=(2,), replace=False, p=q)
 
@@ -76,10 +80,10 @@ class DataLoader:
             key = jax.random.PRNGKey(seed)
             keys = jax.random.split(key, num=self.data_config.ooo_batch_size)
             return vmap(partial(self.sample_double, q))(keys)
-               
+
         def unzip_pairs(dataset: Array, subset: range) -> Tuple[Array, Array]:
             """Create tuples of data pairs (X, y)."""
-            X, y = zip(*[dataset[i] for i in subset]) 
+            X, y = zip(*[dataset[i] for i in subset])
             X = jnp.stack(X, axis=0)
             y = jnp.stack(y, axis=0)
             return (X, y)
@@ -114,7 +118,7 @@ class DataLoader:
         return np.apply_along_axis(
             partial(sample_triplet, self.y_prime), arr=triplets, axis=1
         )
-    
+
     def stepping(self) -> Iterator:
         """Step over the entire training data in mini-batches of size B."""
         for i in range(self.num_batches):
@@ -130,7 +134,6 @@ class DataLoader:
                 )
             X, y = self.unzip_pairs(subset)
             yield (X, y)
-
 
     def sample_ooo_batch(self, q=None) -> Tuple[Array, Array]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
@@ -150,22 +153,14 @@ class DataLoader:
         y = jax.device_put(y)
         return (X, y)
 
-    def main_batch_balancing(self) -> Tuple[Array, Array]:
-        """Sample classes uniformly for each randomly sampled mini-batch."""
-        for _ in range(self.num_batches):
-            main_batch = self.sample_main_batch()
-            yield main_batch
-        
-    def ooo_batch_balancing(
-        self,
-    ) -> Tuple[Tuple[Array, Array], Tuple[Array, Array]]:
+    def ooo_batch_balancing(self) -> Tuple[Array, Array]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
-        q = np.exp(self.p / self.beta) / (np.exp(self.p / self.beta).sum())
-        # q = None
+        # q = np.exp(self.p / self.beta) / (np.exp(self.p / self.beta).sum())
+        q = None
         for _ in range(self.num_batches):
             ooo_batch = self.sample_ooo_batch(q)
             yield ooo_batch
-        self.beta += .01
+        self.beta += 0.01
 
     def __iter__(self) -> Iterator:
         if self.train:
