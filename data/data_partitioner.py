@@ -25,18 +25,19 @@ Array = np.ndarray
 Array = jnp.ndarray
 
 
-@dataclass
+@dataclass(init=True, repr=True)
 class DataPartitioner:
     dataset: str
     data_path: str
     n_samples: int
     distribution: str
     seed: int
+    probability_mass: float
     min_samples: int = None
     train: bool = True
     train_frac: float = 0.85
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # seed rng
         random.seed(self.seed)
         np.random.seed(self.seed)
@@ -115,12 +116,13 @@ class DataPartitioner:
 
     def sample_instances(self) -> Tuple[Dict[int, np.ndarray], np.ndarray]:
         """Randomly sample class instances as determined per our exponential function."""
-        if self.distribution == "heterogeneous":
-            n_totals = self.n_samples * self.n_classes
-            sample = utils.sample_instances(self.n_classes, n_totals)
-            hist = utils.get_histogram(sample, self.min_samples)
-        else:
-            hist = np.ones_like(self.classes, dtype=int) * self.n_samples
+        n_totals = self.n_samples * self.n_classes
+        sample = utils.sample_instances(
+            n_classes=self.n_classes, 
+            n_totals=n_totals, 
+            p=self.probability_mass
+        )
+        hist = utils.get_histogram(sample, self.min_samples)
         class_instances = self.get_instances(hist)
         return class_instances, hist
 

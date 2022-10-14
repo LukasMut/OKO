@@ -5,7 +5,6 @@ import os
 import pickle
 import re
 from collections import Counter
-from functools import partial
 from typing import Tuple
 
 import flax
@@ -84,7 +83,7 @@ def merge_params(pretrained_params, current_params):
     )
 
 
-def get_val_set(dataset, data_path) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def get_val_set(dataset, data_path) -> Tuple[Array, Array]:
     if dataset == "cifar10":
         data = np.load(os.path.join(data_path, "validation.npz"))
         X = data["data"]
@@ -113,9 +112,7 @@ def get_full_dataset(partitioner: object) -> Tuple[Array, Array]:
     return (images, labels)
 
 
-def get_fewshot_subsets(
-    args, n_samples, rnd_seed
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def get_fewshot_subsets(args, n_samples, rnd_seed) -> Tuple[Array, Array]:
     train_partitioner = DataPartitioner(
         dataset=args.dataset,
         data_path=args.data_path,
@@ -123,19 +120,9 @@ def get_fewshot_subsets(
         distribution=args.distribution,
         seed=rnd_seed,
         min_samples=args.min_samples,
+        probability_mass=args.probability_mass,
         train=True,
     )
-    """
-    val_partitioner = DataPartitioner(
-        dataset=args.dataset,
-        data_path=args.data_path,
-        n_samples=n_samples,
-        distribution=args.distribution,
-        seed=rnd_seed,
-        min_samples=args.min_samples,
-        train=True,
-    )
-    """
     if n_samples:
         # get a subset of the data with M samples per class
         images, labels = train_partitioner.get_subset()
@@ -143,33 +130,38 @@ def get_fewshot_subsets(
     else:
         train_set = get_full_dataset(train_partitioner)
         val_partitioner = DataPartitioner(
-                        dataset=args.dataset,
-                        data_path=args.data_path,
-                        n_samples=n_samples,
-                        distribution=args.distribution,
-                        seed=rnd_seed,
-                        min_samples=args.min_samples,
-                        train=False,
+            dataset=args.dataset,
+            data_path=args.data_path,
+            n_samples=n_samples,
+            distribution=args.distribution,
+            seed=rnd_seed,
+            min_samples=args.min_samples,
+            probability_mass=args.probability_mass,
+            train=False,
         )
         val_set = get_full_dataset(val_partitioner)
     return train_set, val_set
 
 
-def get_class_distribution(T: int, k: int = 3, p: float = .8) -> Array:
+def get_class_distribution(num_classes: int, p: float, k: int = 3) -> Array:
     """With probabilities $(p/k)$ and $(1-p)/(T-k)$ sample $k$ frequent and $T-k$ rare classes respectively."""
-    distribution = np.zeros(T)
-    p_k = (p/k)
-    q_k = (1-p)/(T-k)
-    frequent_classes = np.random.choice(T, size=k, replace=False)
-    rare_classes = np.asarray(list(set(range(T)).difference(list(frequent_classes))))
+    distribution = np.zeros(num_classes)
+    p_k = p / k
+    q_k = (1 - p) / (num_classes - k)
+    frequent_classes = np.random.choice(num_classes, size=k, replace=False)
+    rare_classes = np.asarray(
+        list(set(range(num_classes)).difference(list(frequent_classes)))
+    )
     distribution[frequent_classes] += p_k
     distribution[rare_classes] += q_k
     return distribution
 
 
-def sample_instances(n_classes: int, n_totals: int) -> Array:
-    class_distribution = get_class_distribution(n_classes)
-    sample = np.random.choice(n_classes, size=n_totals, replace=True, p=class_distribution)
+def sample_instances(n_classes: int, n_totals: int, p: float) -> Array:
+    class_distribution = get_class_distribution(num_classes=n_classes, p=p)
+    sample = np.random.choice(
+        n_classes, size=n_totals, replace=True, p=class_distribution
+    )
     sample = add_remainder(sample, n_classes)
     return sample
 
@@ -201,9 +193,9 @@ def get_subset(y, hist):
 
 
 def sample_subset(
-    X: np.ndarray, 
-    y: np.ndarray, 
-    N: int, 
+    X: np.ndarray,
+    y: np.ndarray,
+    N: int,
     C: int,
 ) -> Tuple[np.ndarray, np.ndarray]:
     M = len(np.unique(y))
