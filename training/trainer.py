@@ -307,10 +307,13 @@ class OOOTrainer:
 
             if epoch % self.steps == 0:
                 self.save_model(epoch=epoch)
-                # intermediate_performance = utils.merge_metrics(
-                #    (self.train_metrics, self.test_metrics))
-                # utils.save_metrics(out_path=os.path.join(
-                #    self.out_path, 'metrics'), metrics=intermediate_performance, epoch=f'{epoch+1:04d}')
+
+                """
+                intermediate_performance = utils.merge_metrics(
+                    (self.train_metrics, self.test_metrics))
+                utils.save_metrics(out_path=os.path.join(
+                    self.out_path, 'metrics'), metrics=intermediate_performance, epoch=f'{epoch+1:04d}')
+                """
 
             if epoch > self.optimizer_config.burnin:
                 _, early_stop = self.early_stop.update(test_performance[0])
