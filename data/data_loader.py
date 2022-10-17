@@ -158,10 +158,9 @@ class DataLoader:
     def smoothing(self) -> Array:
         @jax.jit
         def softmax(p: Array, beta: float) -> Array:
-            return jnp.exp(p / beta) / (
-                jnp.exp(p / beta).sum()
-            )
-        return partial(softmax, self.p)(self.temperature)
+            return jnp.exp(p / beta) / (jnp.exp(p / beta).sum())
+
+        return softmax(self.p, self.temperature)
 
     def ooo_batch_balancing(self) -> Tuple[Array, Array]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
@@ -170,7 +169,7 @@ class DataLoader:
             ooo_batch = self.sample_ooo_batch(q)
             yield ooo_batch
         if self.data_config.sampling == "dynamic":
-            self.temperature += 0.05
+            self.temperature += 0.1
 
     def __iter__(self) -> Iterator:
         if self.train:
