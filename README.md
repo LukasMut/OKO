@@ -1,1 +1,1 @@
-# OOOMTL
+# Odd-one-out learning
