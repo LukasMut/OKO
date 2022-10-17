@@ -41,8 +41,6 @@ def parseargs():
         help='average number of samples per class')
     aa('--n_classes', type=int,
         help='number of classes in dataset')
-    aa('--task', type=str,
-        help='whether to perform triplet odd-one-out pretraining or standard mle training')
     aa('--ooo_batch_sizes', type=int, nargs='+',
         help='number of triplets per mini-batch (i.e., number of subsamples x 3')
     aa('--main_batch_sizes', type=int, nargs='+',
@@ -145,42 +143,38 @@ if __name__ == "__main__":
         inference=args.inference,
         )
 
-    if args.task in ["mle", "mtl"]:
-        assert isinstance(
-            args.data_path, str), '\nPath to MNIST dataset must be provided.\n'
-
-        if args.dataset == 'cifar10':
-            dataset = np.load(
-                os.path.join(args.data_path, 'test.npz')
-            )
-            images = dataset['data']
-            labels = dataset['labels']
-        else:
-            dataset = torch.load(
-                os.path.join(args.data_path, 'test.pt')
-            )
-            images = dataset[0].numpy()
-            labels = dataset[1].numpy()
-
-        if args.dataset.endswith('mnist'):
-            X_test = rearrange(
-                images, 'n h (w c) -> n h w c', c=1,
-            )
-        else:
-            X_test = images
-
-        y_test = jax.nn.one_hot(x=labels, num_classes=jnp.max(labels) + 1)
-
-        train.inference(
-            out_path=args.out_path,
-            trainer=trainer,
-            X_test=X_test,
-            y_test=y_test,
-            train_labels=train_set[1],
-            model_config=model_config,
-            data_config=data_config,
-            dir_config=dir_config,
-            distribution=args.distribution,    
-            batch_size=main_batch_size,
-            collect_reps=args.collect_reps,
+    if args.dataset == 'cifar10':
+        dataset = np.load(
+            os.path.join(args.data_path, 'test.npz')
         )
+        images = dataset['data']
+        labels = dataset['labels']
+    else:
+        dataset = torch.load(
+            os.path.join(args.data_path, 'test.pt')
+        )
+        images = dataset[0].numpy()
+        labels = dataset[1].numpy()
+
+    if args.dataset.endswith('mnist'):
+        X_test = rearrange(
+            images, 'n h (w c) -> n h w c', c=1,
+        )
+    else:
+        X_test = images
+
+    y_test = jax.nn.one_hot(x=labels, num_classes=jnp.max(labels) + 1)
+
+    train.inference(
+        out_path=args.out_path,
+        trainer=trainer,
+        X_test=X_test,
+        y_test=y_test,
+        train_labels=train_set[1],
+        model_config=model_config,
+        data_config=data_config,
+        dir_config=dir_config,
+        distribution=args.distribution,    
+        batch_size=main_batch_size,
+        collect_reps=args.collect_reps,
+    )

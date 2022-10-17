@@ -72,9 +72,7 @@ class ViT(nn.Module):
     num_layers: int  # Number of layers to use in the Transformer
     patch_size: int  # Number of pixels that the patches have per dimension
     num_patches: int  # Maximum number of patches an image can have
-    task: str
     dropout_prob: float = 0.0  # Amount of dropout to apply in the feed-forward network
-    triplet_dim: int = None  # Dimensionality of triplet bottleneck
     capture_intermediates: bool = False  # Capture intermediate activations
 
     def setup(self):
@@ -108,7 +106,6 @@ class ViT(nn.Module):
         self,
         x: Array,
         train=True,
-        task=None,
     ) -> Array:
         # Preprocess input
         x = img_to_patch(x, self.patch_size)

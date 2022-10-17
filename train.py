@@ -312,8 +312,6 @@ def create_model(*, model_cls, model_config):
         model_dtype = jnp.float32
     model = model_cls(
         num_classes=model_config.n_classes,
-        task=model_config.task,
-        triplet_dim=512 if model_config.task == "mtl" else None,
         dtype=model_dtype,
     )
     return model
@@ -336,8 +334,6 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             num_patches=64,
             num_classes=model_config.n_classes,
             dropout_prob=0.2,
-            triplet_dim=512 if model_config.task == "mtl" else None,
-            task=model_config.task,
             capture_intermediates=False,
         )
     elif model_config.type.lower() == "custom":

@@ -8,7 +8,6 @@ import jax.numpy as jnp
 
 from .triplet import TripletHead
 from .modules import Identity, Normalization, Sigmoid
-from utils import TASKS
 
 
 Array = jnp.ndarray
@@ -81,7 +80,6 @@ class ResNet(nn.Module):
     stage_sizes: Sequence[int]
     block_cls: ModuleDef
     num_classes: int
-    task: str
     num_filters: int = 64
     dtype: Any = jnp.float32
     act: Callable = nn.relu

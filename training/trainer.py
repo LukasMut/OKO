@@ -87,12 +87,12 @@ class OOOTrainer:
                     batch,
                     train=True,
                 )["params"]
-                setattr(self, "init__params", init_params)
+                setattr(self, f"init__params", init_params)
             else:
                 batch = get_init_batch(self.data_config.ooo_batch_size)
                 variables = self.model.init(key_j, batch)
                 _, init_params = variables.pop("params")
-                setattr(self, "init_params", init_params)
+                setattr(self, f"init_params", init_params)
                 del variables
 
             self.init_batch_stats = None
@@ -136,6 +136,13 @@ class OOOTrainer:
         )
 
     def create_functions(self) -> None:
+        def apply_l2_norm(state: Any, lmbda: float) -> Tuple[Any, Array]:
+            weight_penalty, grads = jax.value_and_grad(
+                utils.l2_reg, argnums=0, has_aux=False
+            )(state.params, lmbda)
+            state = state.apply_gradients(grads=grads)
+            return state, weight_penalty
+        
         def init_loss_fn(model_config: FrozenDict, state: Any) -> Callable:
             loss_fn = partial(
                 getattr(utils, f"loss_fn_{model_config['type'].lower()}"), state

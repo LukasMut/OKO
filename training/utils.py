@@ -50,8 +50,6 @@ def l2_reg(params: FrozenDict, lmbda: float = 1e-3) -> float:
     weight_penalty_params = jax.tree_leaves(params)
     weight_l2 = sum(jnp.sum(x**2) for x in weight_penalty_params if x.ndim > 1)
     weight_penalty = lmbda * 0.5 * weight_l2
-    # weight_l1 = sum(jnp.sum(abs(x)) for x in weight_penalty_params if x.ndim > 1)
-    # weight_penalty = lmbda * 0.5 * weight_l1
     return weight_penalty
 
 
