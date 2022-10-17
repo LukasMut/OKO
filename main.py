@@ -59,8 +59,8 @@ def parseargs():
         help='Number of steps of no improvement before stopping training')
     aa('--steps', type=int,
         help='save intermediate parameters every <steps> epochs')
-    aa('--sampling', type=str, default='standard',
-        choices=['uniform', 'standard'],
+    aa('--sampling', type=str, default='uniform',
+        choices=['uniform', 'dynamic'],
         help='how to sample mini-batches per iteration')
     aa('--min_samples', type=int, default=None,
         help='minimum number of samples per class')
