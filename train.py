@@ -41,7 +41,7 @@ def get_combination(
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"
-    return combs[int(os.environ["SGE_TASK_ID"])]
+    return combs[0] # combs[int(os.environ["SGE_TASK_ID"])]
 
 
 def make_path(
@@ -56,7 +56,6 @@ def make_path(
         model_config.task,
         model_config.type + model_config.depth,
         f"{data_config.n_samples}_samples",
-        data_config.distribution,
         f"seed{rnd_seed:02d}",
     )
     return path
