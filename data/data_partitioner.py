@@ -63,7 +63,7 @@ class DataPartitioner:
         else:
             dataset = torch.load(
                 os.path.join(
-                    data_path, "training.pt" if self.train else "validation.npz"
+                    data_path, "training.pt" if self.train else "validation.pt"
                 )
             )
             self.images = dataset[0].numpy()
