@@ -66,8 +66,7 @@ class TrainState(struct.PyTreeNode):
         and `opt_state` updated by applying `grads`, and additional attributes
         replaced as specified by `kwargs`.
         """
-        updates, new_opt_state = self.tx.update(
-            grads, self.opt_state, self.params)
+        updates, new_opt_state = self.tx.update(grads, self.opt_state, self.params)
         new_params = optax.apply_updates(self.params, updates)
         return self.replace(
             step=self.step + 1,

@@ -142,7 +142,7 @@ class OOOTrainer:
             )(state.params, lmbda)
             state = state.apply_gradients(grads=grads)
             return state, weight_penalty
-        
+
         def init_loss_fn(model_config: FrozenDict, state: Any) -> Callable:
             loss_fn = partial(
                 getattr(utils, f"loss_fn_{model_config['type'].lower()}"), state
@@ -184,6 +184,11 @@ class OOOTrainer:
                         batch,
                     )
                     state = state.apply_gradients(grads=grads)
+
+            state, weight_penalty = apply_l2_norm(
+                state=state, lmbda=model_config["weight_decay"]
+            )
+            loss += weight_penalty
 
             return state, loss, aux
 

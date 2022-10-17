@@ -150,7 +150,6 @@ def inference(
     model_config: FrozenDict,
     data_config: FrozenDict,
     dir_config: FrozenDict,
-    distribution: str,
     batch_size: int = None,
     collect_reps: bool = False,
 ) -> None:

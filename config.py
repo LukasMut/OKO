@@ -13,8 +13,6 @@ def get_configs(args, **kwargs):
     data_config = config_dict.ConfigDict()
     data_config.root = args.data_path
     data_config.name = args.dataset.lower()
-    # balanced (homogeneous) or imbalanced (heterogeneous) dataset
-    data_config.distribution = args.distribution
     # minimum number of instances per class
     data_config.min_samples = args.min_samples
     # dataset imbalance is a function of p

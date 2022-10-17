@@ -29,7 +29,6 @@ class DataPartitioner:
     dataset: str
     data_path: str
     n_samples: int
-    distribution: str
     seed: int
     probability_mass: float
     min_samples: int = None
@@ -221,7 +220,6 @@ class DataPartitioner:
         out_path = os.path.join(
             out_path,
             f"{self.n_samples:d}_samples",
-            self.distribution,
             f"seed{self.seed:02d}",
         )
         if not os.path.exists(out_path):

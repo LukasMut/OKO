@@ -34,9 +34,6 @@ def parseargs():
         choices=['mnist', 'fashionmnist', 'cifar10', 'cifar100', 'imagenet'])
     aa('--network', type=str, default='ResNet18',
         choices=utils.MODELS)
-    aa('--distribution', type=str,
-        choices=['homogeneous', 'heterogeneous'],
-        help='whether dataset is balanced or imbalanced')
     aa('--samples', type=int, nargs='+',
         help='average number of samples per class')
     aa('--n_classes', type=int,
@@ -173,8 +170,7 @@ if __name__ == "__main__":
         train_labels=train_set[1],
         model_config=model_config,
         data_config=data_config,
-        dir_config=dir_config,
-        distribution=args.distribution,    
+        dir_config=dir_config, 
         batch_size=main_batch_size,
         collect_reps=args.collect_reps,
     )
