@@ -31,12 +31,13 @@ def get_combination(
     ooo_batch_sizes: List[int],
     main_batch_sizes: List[int],
     learning_rates: List[float],
+    max_triplets: List[int],
     seeds: List[int],
 ):
     combs = []
     combs.extend(
         list(
-            itertools.product(zip(samples, epochs, ooo_batch_sizes, main_batch_sizes, learning_rates), seeds)
+            itertools.product(zip(samples, epochs, ooo_batch_sizes, main_batch_sizes, learning_rates, max_triplets), seeds)
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"

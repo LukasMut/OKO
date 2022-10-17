@@ -42,7 +42,7 @@ def parseargs():
         help='number of triplets per mini-batch (i.e., number of subsamples x 3')
     aa('--main_batch_sizes', type=int, nargs='+',
         help='number of triplets per mini-batch (i.e., number of subsamples x 3')
-    aa('--max_triplets', type=int, default=None,
+    aa('--max_triplets', type=int, nargs='+',
         help='maximum number of triplets during each epoch')
     aa('--probability_mass', type=float, default=0.8,
         choices=[0.5, 0.6, 0.7, 0.8, 0.9],
@@ -81,12 +81,13 @@ if __name__ == "__main__":
     # parse arguments
     args = parseargs()
     # get current combination of settings
-    (n_samples, epochs, ooo_batch_size, main_batch_size, eta), rnd_seed = train.get_combination(
+    (n_samples, epochs, ooo_batch_size, main_batch_size, eta, max_triplets), rnd_seed = train.get_combination(
         samples=args.samples,
         epochs=args.epochs,
         ooo_batch_sizes=args.ooo_batch_sizes,
         main_batch_sizes=args.main_batch_sizes,
         learning_rates=args.etas,
+        max_triplets=args.max_triplets,
         seeds=args.seeds,
         )
 
@@ -111,6 +112,7 @@ if __name__ == "__main__":
         epochs=epochs, 
         ooo_batch_size=ooo_batch_size,
         main_batch_size=main_batch_size,
+        max_triplets=max_triplets,
         eta=eta,
         )
 
