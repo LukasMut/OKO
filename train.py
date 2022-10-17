@@ -41,7 +41,7 @@ def get_combination(
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"
-    return combs[0] # combs[int(os.environ["SGE_TASK_ID"])]
+    return combs[int(os.environ["SGE_TASK_ID"])]
 
 
 def make_path(
