@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import itertools
 import os
 import pickle
 from collections import defaultdict
@@ -16,7 +15,7 @@ import jax.numpy as jnp
 import jax.random as random
 import numpy as np
 import optax
-from flax.core.frozen_dict import FrozenDict, freeze
+from flax.core.frozen_dict import FrozenDict
 from flax.training import checkpoints
 from flax.training.early_stopping import EarlyStopping
 from torch.utils.tensorboard import SummaryWriter
@@ -29,7 +28,7 @@ Array = jnp.ndarray
 Model = Any
 
 
-@dataclass
+@dataclass(init=True, repr=True)
 class OOOTrainer:
     model: Model
     model_config: FrozenDict
@@ -39,7 +38,7 @@ class OOOTrainer:
     steps: int
     rnd_seed: int
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.rng_seq = hk.PRNGSequence(self.rnd_seed)
         self.rng = jax.random.PRNGKey(self.rnd_seed)
         # freeze model config dictionary (i.e., make it immutable)
@@ -54,6 +53,7 @@ class OOOTrainer:
         # create jitted train and eval functions
         self.create_functions()
 
+        # initialize two empty lists to store train and val performances
         self.train_metrics = list()
         self.test_metrics = list()
 
@@ -77,7 +77,7 @@ class OOOTrainer:
                 variables["params"],
                 variables["batch_stats"],
             )
-            setattr(self, f"init_params", init_params)
+            setattr(self, "init_params", init_params)
         else:
             if self.model_config["type"].lower() == "vit":
                 batch = get_init_batch(self.data_config.ooo_batch_size)
@@ -87,18 +87,18 @@ class OOOTrainer:
                     batch,
                     train=True,
                 )["params"]
-                setattr(self, f"init__params", init_params)
+                setattr(self, "init__params", init_params)
             else:
                 batch = get_init_batch(self.data_config.ooo_batch_size)
                 variables = self.model.init(key_j, batch)
                 _, init_params = variables.pop("params")
-                setattr(self, f"init_params", init_params)
+                setattr(self, "init_params", init_params)
                 del variables
 
             self.init_batch_stats = None
         self.state = None
 
-    def get_optim(self, train_batches: Iterator):
+    def get_optim(self, train_batches: Iterator) -> Any:
         opt_class = getattr(optax, self.optimizer_config.name)
         opt_hypers = {}
         # opt_hypers["learning_rate"] = self.optimizer_config.lr
@@ -128,9 +128,7 @@ class OOOTrainer:
         # initialize training state
         self.state = TrainState.create(
             apply_fn=self.model.apply,
-            params=self.init_params
-            if self.state is None
-            else self.state.params,
+            params=self.init_params if self.state is None else self.state.params,
             batch_stats=self.init_batch_stats
             if self.state is None
             else self.state.batch_stats,
@@ -138,11 +136,9 @@ class OOOTrainer:
         )
 
     def create_functions(self) -> None:
-
-        def init_loss_fn(model_config: FrozenDict, state: Any) -> Callable:    
+        def init_loss_fn(model_config: FrozenDict, state: Any) -> Callable:
             loss_fn = partial(
-                getattr(utils, f"loss_fn_{model_config['type'].lower()}"),
-                state
+                getattr(utils, f"loss_fn_{model_config['type'].lower()}"), state
             )
             return loss_fn
 
@@ -209,7 +205,7 @@ class OOOTrainer:
                 )
             return logits
 
-        # initialize functions
+        # partially initialize functions
         self.init_loss_fn = partial(init_loss_fn, self.model_config)
         self.train_step = partial(train_step, self.model_config)
         self.inference = partial(inference, self.model_config)
@@ -222,7 +218,9 @@ class OOOTrainer:
         acc = self.collect_hits(cls_hits=cls_hits, batch_hits=batch_hits)
         return loss.item(), acc
 
-    def compute_accuracy(self, batch: Tuple[Array], aux, cls_hits: Dict[int, int]) -> Array:
+    def compute_accuracy(
+        self, batch: Tuple[Array], aux, cls_hits: Dict[int, int]
+    ) -> Array:
         logits = aux[0] if isinstance(aux, tuple) else aux
         _, y = batch
         batch_hits = utils.class_hits(logits, y)
@@ -263,7 +261,9 @@ class OOOTrainer:
         avg_batch_loss = jnp.mean(batch_losses)
         return (avg_batch_loss, avg_batch_acc)
 
-    def train(self, train_batches: Iterator, val_batches: Iterator) -> Tuple[dict, int]:
+    def train(
+        self, train_batches: Iterator, val_batches: Iterator
+    ) -> Tuple[Dict[str, Tuple[float]], int]:
         self.init_optim(train_batches=train_batches)
         for epoch in tqdm(range(1, self.optimizer_config.epochs + 1), desc="Epoch"):
             train_performance = self.train_epoch(batches=train_batches, train=True)
@@ -313,13 +313,13 @@ class OOOTrainer:
         )
 
     @staticmethod
-    def save_metrics(out_path, metrics, epoch):
+    def save_metrics(out_path: str, metrics, epoch: int) -> None:
         if not os.path.exists(out_path):
             os.makedirs(out_path)
         with open(os.path.join(out_path, f"metrics_{epoch}.pkl"), "wb") as f:
             pickle.dump(metrics, f)
 
-    def save_model(self, epoch=0):
+    def save_model(self, epoch: int = 0) -> None:
         # save current model at certain training iteration
         if self.model_config["type"].lower() == "resnet":
             target = {
@@ -332,7 +332,7 @@ class OOOTrainer:
             ckpt_dir=self.dir_config.log_dir, target=target, step=epoch, overwrite=True
         )
 
-    def load_model(self):
+    def load_model(self) -> None:
         """Loade model checkpoint. Different checkpoint is used for pretrained models."""
         if self.model_config["type"].lower() == "resnet":
             state_dict = checkpoints.restore_checkpoint(

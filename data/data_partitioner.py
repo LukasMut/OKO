@@ -5,10 +5,7 @@ __all__ = ["DataPartitioner"]
 
 import os
 import random
-import re
-from collections import Counter
 from dataclasses import dataclass
-from functools import partial
 from typing import Any, Dict, List, Tuple
 
 import h5py
@@ -16,13 +13,15 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import torch
-import torch.utils.data as data
 import torchvision.transforms as T
 
 import utils
 
-Array = np.ndarray
-Array = jnp.ndarray
+np_array = np.ndarray
+jnp_array = jnp.ndarray
+
+
+RGB_DATASETS = ["cifar10", "cifar100", "imagenet"]
 
 
 @dataclass(init=True, repr=True)
@@ -48,7 +47,7 @@ class DataPartitioner:
         self.load_data(self.data_path)
         self.n_classes = self.classes.shape[0]
 
-        if self.dataset in ["cifar10", "cifar100", "imagenet"]:
+        if self.dataset in RGB_DATASETS:
             self.transform = self.get_transform()
 
     def load_data(self, data_path: str) -> None:
@@ -99,7 +98,7 @@ class DataPartitioner:
         )
         return transform
 
-    def get_instances(self, hist):
+    def get_instances(self, hist: np_array) -> Dict[int, np_array]:
         class_samples = {}
         for k in self.classes:
             class_partition = np.where(self.labels == k)[0]
@@ -114,33 +113,17 @@ class DataPartitioner:
             class_samples[k] = class_subsample
         return class_samples
 
-    def sample_instances(self) -> Tuple[Dict[int, np.ndarray], np.ndarray]:
+    def sample_instances(self) -> Tuple[Dict[int, np_array], np_array]:
         """Randomly sample class instances as determined per our exponential function."""
         n_totals = self.n_samples * self.n_classes
         sample = utils.sample_instances(
-            n_classes=self.n_classes, 
-            n_totals=n_totals, 
-            p=self.probability_mass
+            n_classes=self.n_classes, n_totals=n_totals, p=self.probability_mass
         )
         hist = utils.get_histogram(sample, self.min_samples)
         class_instances = self.get_instances(hist)
         return class_instances, hist
 
-    def apply_augmentations(
-        self, cls_samples: List[tuple], diff: int
-    ) -> List[Tuple[np.ndarray, float]]:
-        """Apply image data augmentations."""
-        random_images, random_labels = zip(*random.choices(cls_samples, k=diff))
-        augmentations = [
-            (
-                self.augmenter(random_images[k]).permute(1, 2, 0).numpy(),
-                random_labels[k],
-            )
-            for k in range(diff)
-        ]
-        return augmentations
-
-    def get_subset(self) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def get_subset(self) -> Tuple[jnp_array, jnp_array]:
         """Get a few-shot subset of the data."""
         sampled_instances, _ = self.sample_instances()
         samples = []
@@ -162,7 +145,7 @@ class DataPartitioner:
         return (images, labels)
 
     @staticmethod
-    def reduce_set(N, addition):
+    def reduce_set(N: int, addition: jnp_array) -> jnp_array:
         # return jnp.array(list(filter(lambda i: i not in addition, range(N))))
         reduced_indices = list(range(N))
         for i in addition:
@@ -170,7 +153,9 @@ class DataPartitioner:
         return jnp.array(reduced_indices)
 
     @staticmethod
-    def get_set_addition(y_train, val_classes, seed):
+    def get_set_addition(
+        y_train: jnp_array, val_classes: np_array, seed: int
+    ) -> jnp_array:
         return jnp.array(
             [
                 jax.random.choice(
@@ -194,11 +179,10 @@ class DataPartitioner:
         X_val_adjusted = jnp.concatenate((X_val, X_addition), axis=0)
         y_val_adjusted = jnp.concatenate((y_val, y_addition), axis=0)
         return X_train_adjusted, y_train_adjusted, X_val_adjusted, y_val_adjusted
-        # return X_train, y_train, X_val_adjusted, y_val_adjusted
 
     def create_splits(
         self, images, labels
-    ) -> Tuple[Tuple[jnp.ndarray, jnp.ndarray], Tuple[jnp.ndarray, jnp.ndarray]]:
+    ) -> Tuple[Tuple[jnp_array, jnp_array], Tuple[jnp_array, jnp_array]]:
         """Construct train and validation splits of the few-shot data subset."""
         rnd_perm = np.random.permutation(np.arange(images.shape[0]))
         X_train = images[rnd_perm[: int(len(rnd_perm) * self.train_frac)]]
@@ -221,7 +205,7 @@ class DataPartitioner:
         return (X_train, y_train), (X_val, y_val)
 
     def save_subsets(
-        self, train_set: jnp.ndarray, val_set: jnp.ndarray, out_path: str
+        self, train_set: jnp_array, val_set: jnp_array, out_path: str
     ) -> None:
         """Save few-shot subset to disk."""
         out_path = self.make_outpath(out_path)
