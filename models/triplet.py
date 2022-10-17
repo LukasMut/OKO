@@ -32,7 +32,9 @@ class TripletHead(nn.Module):
             self.query = nn.Dense(self.num_classes, name="triplet_query")
     
     def attention(self, x: Array) -> Array:
-        return vmap(self.query, in_axes=1, out_axes=1)(x)
+        dots = vmap(self.query, in_axes=1, out_axes=1)(x)
+        # return dots / jnp.sqrt(x.shape[-1])
+        return dots
 
     @nn.compact
     def __call__(self, x: Array, train: bool = True) -> Array:
