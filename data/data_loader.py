@@ -66,7 +66,7 @@ class DataLoader:
             occurrences = dict(
                 sorted(Counter(self.y_flat.tolist()).items(), key=lambda kv: kv[0])
             )
-            self.hist = np.asarray(list(occurrences.values()))
+            self.hist = jnp.array(list(occurrences.values()))
             self.p = self.hist / self.hist.sum()
             self.temperature = 0.1
 
@@ -155,14 +155,17 @@ class DataLoader:
         y = jax.device_put(y)
         return (X, y)
 
-    def softmax(self) -> np.ndarray:
-        return np.exp(self.p / self.temperature) / (
-            np.exp(self.p / self.temperature).sum()
-        )
+    def smoothing(self) -> Array:
+        @jax.jit
+        def softmax(p: Array, beta: float) -> Array:
+            return jnp.exp(p / beta) / (
+                jnp.exp(p / beta).sum()
+            )
+        return partial(softmax, self.p)(self.temperature)
 
     def ooo_batch_balancing(self) -> Tuple[Array, Array]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
-        q = self.softmax() if self.data_config.sampling == "dynamic" else None
+        q = self.smoothing() if self.data_config.sampling == "dynamic" else None
         for _ in range(self.num_batches):
             ooo_batch = self.sample_ooo_batch(q)
             yield ooo_batch
@@ -172,8 +175,7 @@ class DataLoader:
     def __iter__(self) -> Iterator:
         if self.train:
             return iter(self.ooo_batch_balancing())
-        else:
-            return iter(self.stepping())
+        return iter(self.stepping())
 
     def __len__(self) -> int:
         return self.num_batches
