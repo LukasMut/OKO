@@ -185,10 +185,13 @@ class OOOTrainer:
                     )
                     state = state.apply_gradients(grads=grads)
 
+            """
+            # NOTE: l2-regularization does not appear to be necessary/improve generalizationperformance
             state, weight_penalty = apply_l2_norm(
                 state=state, lmbda=model_config["weight_decay"]
             )
             loss += weight_penalty
+            """
 
             return state, loss, aux
 
