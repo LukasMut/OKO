@@ -243,6 +243,8 @@ def make_results_df(
     )
     results_current_run["cross-entropy"] = performance["loss"]
     results_current_run["training"] = model_config.task
+    results_current_run["sampling"] = data_config.sampling
+    results_current_run["weighting"] = False
     results_current_run["n_samples"] = data_config.n_samples * data_config.n_classes
     results_current_run["n_frequent_classes"] = data_config.n_frequent_classes
     results_current_run["probability"] = data_config.class_probs
@@ -287,6 +289,8 @@ def save_results(
             "avg-performance-rare-classes",
             "cross-entropy",
             "training",
+            "sampling",
+            "weighting",
             "n_samples",
             "probability",
         ]
