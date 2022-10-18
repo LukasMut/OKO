@@ -48,7 +48,7 @@ class OOOTrainer:
 
         self.logger = SummaryWriter(log_dir=self.dir_config.log_dir)
         self.early_stop = EarlyStopping(
-            min_delta=1e-4, patience=self.optimizer_config.patience
+            min_delta=1e-3, patience=self.optimizer_config.patience
         )
         # create jitted train and eval functions
         self.create_functions()
@@ -316,7 +316,7 @@ class OOOTrainer:
                 """
 
             if epoch > self.optimizer_config.burnin:
-                _, early_stop = self.early_stop.update(test_performance[0])
+                _, early_stop = self.early_stop.update(test_performance[1])
                 if early_stop.should_stop:
                     print("\nMet early stopping criteria, stopping training...\n")
                     break
