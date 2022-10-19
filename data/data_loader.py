@@ -33,8 +33,8 @@ class DataLoader:
 
     def __post_init__(self) -> None:
         self.cpu_devices = jax.devices("cpu")
-        self.num_gpus = 2
-        self.device_num = random.choices(range(self.num_gpus))[0]
+        num_gpus = 2
+        self.device_num = random.choices(range(num_gpus))[0]
         self.X = self.data[0]
         self.y = copy.deepcopy(self.data[1])
 
@@ -50,6 +50,7 @@ class DataLoader:
         self.ooo_classes = np.unique(self.y_prime)
 
         if self.train:
+            self.k = 3
             self.num_batches = math.ceil(
                 self.data_config.max_triplets / self.data_config.ooo_batch_size
             )
@@ -83,6 +84,20 @@ class DataLoader:
             keys = jax.random.split(key, num=self.data_config.ooo_batch_size)
             return vmap(partial(self.sample_double, q))(keys)
 
+        def sample_triplet(y_prime: Array, triplet: Array) -> List[int]:
+            """Uniformly sample instances/indices for the two classes in a triplet without replacement."""
+            instances = []
+            for cls in np.unique(triplet):
+                num_examples = np.count_nonzero(triplet == cls)
+                rnd_sample = np.random.choice(
+                    np.where(y_prime == cls)[0],
+                    size=num_examples,
+                    replace=False,  # sample instances without replacement
+                    p=None,
+                )
+                instances.extend(rnd_sample)
+            return instances
+
         def unzip_pairs(dataset: Array, subset: range) -> Tuple[Array, Array]:
             """Create tuples of data pairs (X, y)."""
             X, y = zip(*[dataset[i] for i in subset])
@@ -94,32 +109,36 @@ class DataLoader:
         if self.train:
             self.sample_double = partial(sample_double, self.ooo_classes)
             self.sample_doubles = sample_doubles
+            self.sample_triplet = partial(sample_triplet, self.y_prime)
         else:
             self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
     @staticmethod
     def expand(doubles: Array) -> Tuple[Array, Array]:
         pair_classes = np.apply_along_axis(np.random.choice, axis=1, arr=doubles)
-        triplets = np.c_[doubles, pair_classes]
+        triplets = np.c_[doubles, pair_classes]  # , pair_classes]
         triplets = np.apply_along_axis(np.random.permutation, axis=1, arr=triplets)
         """
-        ooo = np.array(
+        ooo_classes = np.array(
             [
-                np.where(triplet != double)[0][0]
-                for triplet, double in zip(triplets, pair_classes)
+                triplet[np.where(triplet != sim_cls)[0][0]]
+                for triplet, sim_cls in zip(triplets, pair_classes)
             ]
         )
-        return triplets, ooo, pairs
+        return triplets, ooo_classes
+        ooo_indices = np.array(
+            [
+                np.where(triplet != sim_cls)[0][0]
+                for triplet, sim_cls in zip(triplets, pair_classes)
+            ]
+        )
+        return triplets, ooo_indices, pair_classes
+
         """
         return triplets, pair_classes
 
     def sample_triplets(self, triplets: Array) -> Array:
-        def sample_triplet(y_prime, triplet: Array) -> List[int]:
-            return [np.random.choice(np.where(y_prime == cls)[0]) for cls in triplet]
-
-        return np.apply_along_axis(
-            partial(sample_triplet, self.y_prime), arr=triplets, axis=1
-        )
+        return np.apply_along_axis(self.sample_triplet, arr=triplets, axis=1)
 
     def stepping(self) -> Iterator:
         """Step over the entire training data in mini-batches of size B."""
@@ -150,7 +169,7 @@ class DataLoader:
         triplet_subset = self.sample_triplets(triplet_subset)
         triplet_subset = triplet_subset.ravel()
         X = self.X[triplet_subset]
-        X = rearrange(X, "(n k) h w c -> n k h w c", n=X.shape[0] // 3)
+        X = rearrange(X, "(n k) h w c -> n k h w c", n=X.shape[0] // self.k, k=self.k)
         X = jax.device_put(X)
         y = jax.device_put(y)
         return (X, y)
