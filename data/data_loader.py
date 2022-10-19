@@ -46,7 +46,7 @@ class DataLoader:
             self.X = jnp.expand_dims(self.X, axis=-1)
 
         self.num_classes = self.y.shape[-1]
-        self.y_prime = jnp.nonzero(self.data[1])[-1]
+        self.y_prime = jnp.nonzero(self.y)[-1]
         self.ooo_classes = np.unique(self.y_prime)
 
         if self.train:
@@ -61,9 +61,8 @@ class DataLoader:
             )
             self.remainder = len(self.dataset) % self.data_config.main_batch_size
 
-        self.y_flat = np.nonzero(self.y)[1]
-
         if self.data_config.sampling == "dynamic":
+            self.y_flat = np.nonzero(self.y)[1]
             occurrences = dict(
                 sorted(Counter(self.y_flat.tolist()).items(), key=lambda kv: kv[0])
             )
