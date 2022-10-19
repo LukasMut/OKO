@@ -292,6 +292,7 @@ def save_results(
             "sampling",
             "weighting",
             "n_samples",
+            "n_frequent_classes",
             "probability",
         ]
         results_current_run = make_results_df(
