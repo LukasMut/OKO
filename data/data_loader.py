@@ -179,7 +179,7 @@ class DataLoader:
         def softmax(p: Array, beta: float) -> Array:
             return jnp.exp(p / beta) / (jnp.exp(p / beta).sum())
 
-        return softmax(self.p, self.temperature)
+        return partial(softmax, self.p)(self.temperature)
 
     def ooo_batch_balancing(self) -> Tuple[Array, Array]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
