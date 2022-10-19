@@ -45,7 +45,6 @@ def parseargs():
     aa('--max_triplets', type=int, nargs='+',
         help='maximum number of triplets during each epoch')
     aa('--probability_mass', type=float, default=0.8,
-        choices=[0.5, 0.6, 0.7, 0.8, 0.9],
         help='probability mass equally distributed across the k most frequent classes')
     aa('--epochs', type=int, nargs='+',
         help='maximum number of epochs')
