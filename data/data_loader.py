@@ -113,10 +113,18 @@ class DataLoader:
             self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
     @staticmethod
-    def expand(doubles: Array) -> Tuple[Array, Array]:
+    def make_tuples(doubles: Array, pair_classes: Array, k: int) -> np.ndarray:
+        """Make b ordered tuples of k-1 "pair" class instances and one odd-one-out."""
+        if k == 3:
+            tuples = np.c_[doubles, pair_classes]
+        else:
+            tuples = np.c_[doubles, pair_classes, pair_classes]
+        return tuples
+
+    def expand(self, doubles: Array) -> Tuple[Array, Array]:
         pair_classes = np.apply_along_axis(np.random.choice, axis=1, arr=doubles)
-        triplets = np.c_[doubles, pair_classes]  # , pair_classes]
-        triplets = np.apply_along_axis(np.random.permutation, axis=1, arr=triplets)
+        tuples = self.make_tuples(doubles=doubles, pair_classes=pair_classes, k=self.k)
+        tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
         """
         ooo_classes = np.array(
             [
@@ -124,17 +132,17 @@ class DataLoader:
                 for triplet, sim_cls in zip(triplets, pair_classes)
             ]
         )
-        return triplets, ooo_classes
+        return tuples, ooo_classes
         ooo_indices = np.array(
             [
                 np.where(triplet != sim_cls)[0][0]
                 for triplet, sim_cls in zip(triplets, pair_classes)
             ]
         )
-        return triplets, ooo_indices, pair_classes
+        return tuples, ooo_indices, pair_classes
 
         """
-        return triplets, pair_classes
+        return tuples, pair_classes
 
     def sample_triplets(self, triplets: Array) -> Array:
         return np.apply_along_axis(self.sample_triplet, arr=triplets, axis=1)
