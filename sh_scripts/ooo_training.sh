@@ -10,26 +10,27 @@
 
 # submit as: qsub -m eas -M muttenthaler@cbs.mpg.de ./sh_scripts/ooo_heterogeneous_pretraining.sh
 
-dataset='mnist';
+dataset='cifar10';
 out_path="/home/space/OOOPretraining/results";
 data_path="/home/space/datasets/${dataset}/processed";
 network='Custom';
 
-sampling='uniform';
+sampling='dynamic';
 testing='uniform';
 n_classes=10;
-min_samples=3;
 optim='sgd';
 burnin=30;
 patience=10;
 steps=40;
 
-samples=( 10 20 30 40 50 100 500 );
-max_epochs=( 400 400 300 300 300 200 200 );
-ooo_batch_sizes=( 32 64 64 64 64 64 128 );
-main_batch_sizes=( 8 16 16 16 32 32 64 );
+min_samples=( 4 4 5 5 );
+p_masses=( 0.8 0.85 0.9 0.95 ); 
+samples=( 20 30 40 50 100 500 1000 );
+max_epochs=( 300 300 300 300 200 200 200 );
+ooo_batch_sizes=( 32 64 64 64 128 128 128 );
+main_batch_sizes=( 16 16 16 32 32 64 128 );
 etas=( 0.001 0.001 0.001 0.001 0.001 0.001 0.001 );
-max_triplets=( 500 1000 1000 1000 2000 2000 3000 );
+max_triplets=( 1000 1000 2000 2000 3000 4000 5000 );
 seeds=( 0 1 2 3 4 );
 
 source ~/.bashrc
@@ -43,10 +44,12 @@ export XLA_PYTHON_CLIENT_ALLOCATOR=platform
 logdir="./logs/${dataset}/${network}/${dist}/$SGE_TASK_ID";
 mkdir -p $logdir;
 
-echo "Started odd-one-out semi-supervised learning $SGE_TASK_ID for $network at $(date)"
+for i in ${!p_masses[@]}; do
 
-python main.py --out_path $out_path --data_path $data_path --network $network --dataset $dataset --samples ${samples[@]} --optim $optim --sampling $sampling --min_samples $min_samples --n_classes $n_classes --max_triplets ${max_triplets[@]} --ooo_batch_sizes ${ooo_batch_sizes[@]} --main_batch_sizes ${batch_sizes[@]} --epochs ${max_epochs[@]} --etas ${etas[@]} --burnin $burnin --patience $patience --steps $steps --seeds ${seeds[@]} >> ${logdir}/${task}_${dist}.out
+	echo "Started odd-one-out supervised learning $SGE_TASK_ID for $network at $(date)"
 
-printf "Finished odd-one-out semi-supervised learning $SGE_TASK_ID for $network at $(date)\n"
+	python main.py --out_path $out_path --data_path $data_path --network $network --dataset $dataset --samples ${samples[@]} --optim $optim --sampling $sampling --min_samples ${min_samples[$i]} --probability_mass ${p_masses[$i]} --n_classes $n_classes --max_triplets ${max_triplets[@]} --ooo_batch_sizes ${ooo_batch_sizes[@]} --main_batch_sizes ${main_batch_sizes[@]} --epochs ${max_epochs[@]} --etas ${etas[@]} --burnin $burnin --patience $patience --steps $steps --seeds ${seeds[@]} >> ${logdir}/${task}_${dist}.out
 
+	printf "Finished odd-one-out semi-supervised learning $SGE_TASK_ID for $network at $(date)\n"
+done
 # rm -r $cuda_dir;
