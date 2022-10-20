@@ -247,6 +247,7 @@ def make_results_df(
     results_current_run["weighting"] = False
     results_current_run["n_samples"] = data_config.n_samples * data_config.n_classes
     results_current_run["n_frequent_classes"] = data_config.n_frequent_classes
+    results_current_run["min_samples"] = data_config.min_samples
     results_current_run["probability"] = data_config.class_probs
     return results_current_run
 
@@ -293,6 +294,7 @@ def save_results(
             "weighting",
             "n_samples",
             "n_frequent_classes",
+            "min_samples",
             "probability",
         ]
         results_current_run = make_results_df(
