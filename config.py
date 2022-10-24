@@ -5,8 +5,6 @@ import re
 
 from ml_collections import config_dict
 
-from utils import get_class_weights
-
 
 def get_configs(args, **kwargs):
     """Create config dicts for dataset, model and optimizer."""
@@ -16,7 +14,7 @@ def get_configs(args, **kwargs):
     # minimum number of instances per class
     data_config.min_samples = args.min_samples
     # dataset imbalance is a function of p
-    data_config.class_probs = args.probability_mass
+    data_config.class_probs = kwargs.pop("p_mass")
     # number of classes that occur frequently in the data
     data_config.n_frequent_classes = 3
     # whether to balance mini-batches
@@ -41,9 +39,11 @@ def get_configs(args, **kwargs):
     except AttributeError:
         model_config.depth = ""
 
-    model_config.weight_decay = 1e-4
+    model_config.regularization = args.regularization
+    if args.regularization:
+        model_config.weight_decay = 1e-5
     model_config.n_classes = args.n_classes
-    model_config.task = "OOO"
+    model_config.task = "Odd-one-out"
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
 

@@ -4,7 +4,6 @@
 import itertools
 import math
 import os
-import pickle
 import warnings
 from collections import Counter, defaultdict
 from typing import Dict, List, Tuple
@@ -32,12 +31,24 @@ def get_combination(
     main_batch_sizes: List[int],
     learning_rates: List[float],
     max_triplets: List[int],
+    probability_masses: List[float],
     seeds: List[int],
 ):
     combs = []
     combs.extend(
         list(
-            itertools.product(zip(samples, epochs, ooo_batch_sizes, main_batch_sizes, learning_rates, max_triplets), seeds)
+            itertools.product(
+                zip(
+                    samples,
+                    epochs,
+                    ooo_batch_sizes,
+                    main_batch_sizes,
+                    learning_rates,
+                    max_triplets,
+                ),
+                probability_masses,
+                seeds,
+            )
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"
@@ -163,7 +174,8 @@ def inference(
     else:
         try:
             loss, cls_hits = trainer.eval_step(
-                (X_test, y_test), cls_hits=defaultdict(list),
+                (X_test, y_test),
+                cls_hits=defaultdict(list),
             )
         except (RuntimeError, MemoryError):
             warnings.warn(
@@ -196,23 +208,28 @@ def inference(
 
 
 def sort_cls_distribution(cls_distribution: Dict[int, int]) -> Dict[int, int]:
-    return dict(sorted(cls_distribution.items(), key=lambda kv:kv[1], reverse=True))
+    return dict(sorted(cls_distribution.items(), key=lambda kv: kv[1], reverse=True))
 
 
-def get_cls_subset_performance(cls_accuracies: Dict[int, float], cls_subset: List[int]) -> Tuple[float]:
-    _, cls_subset_performances = zip(*list(filter(lambda x: x[0] in cls_subset, cls_accuracies)))
+def get_cls_subset_performance(
+    cls_accuracies: Dict[int, float], cls_subset: List[int]
+) -> Tuple[float]:
+    _, cls_subset_performances = zip(
+        *list(filter(lambda x: x[0] in cls_subset, cls_accuracies))
+    )
     return cls_subset_performances
 
 
 def get_cls_subset_performances(
-        cls_distribution: Dict[int, int], 
-        cls_accuracies: Dict[int, float], k: int = 3
+    cls_distribution: Dict[int, int], cls_accuracies: Dict[int, float], k: int = 3
 ) -> Tuple[Tuple[float], Tuple[float]]:
-    cls_distribution = sort_cls_distribution(cls_distribution) 
+    cls_distribution = sort_cls_distribution(cls_distribution)
     classes = list(cls_distribution.keys())
     frequent_classes = classes[:k]
     rare_classes = classes[k:]
-    performance_frequent_classes = get_cls_subset_performance(cls_accuracies, frequent_classes)
+    performance_frequent_classes = get_cls_subset_performance(
+        cls_accuracies, frequent_classes
+    )
     performance_rare_classes = get_cls_subset_performance(cls_accuracies, rare_classes)
     return performance_frequent_classes, performance_rare_classes
 
@@ -225,7 +242,10 @@ def make_results_df(
     data_config: FrozenDict,
 ) -> pd.DataFrame:
     accuracies = list(performance["accuracy"].items())
-    performance_frequent_classes, performance_rare_classes = get_cls_subset_performances(
+    (
+        performance_frequent_classes,
+        performance_rare_classes,
+    ) = get_cls_subset_performances(
         cls_distribution=cls_distribution,
         cls_accuracies=accuracies,
     )
@@ -234,7 +254,9 @@ def make_results_df(
     results_current_run["dataset"] = data_config.name
     results_current_run["class-distribution"] = [cls_distribution]
     results_current_run["class-performance"] = [accuracies]
-    results_current_run["avg-performance-overall"] = np.mean(list(map(lambda x: x[1], accuracies)))
+    results_current_run["avg-performance-overall"] = np.mean(
+        list(map(lambda x: x[1], accuracies))
+    )
     results_current_run["avg-performance-frequent-classes"] = np.mean(
         performance_frequent_classes
     )
@@ -249,7 +271,9 @@ def make_results_df(
     results_current_run["n_frequent_classes"] = data_config.n_frequent_classes
     results_current_run["min_samples"] = data_config.min_samples
     results_current_run["probability"] = data_config.class_probs
+    results_current_run["l2_reg"] = model_config.regularization
     return results_current_run
+
 
 def save_results(
     out_path: str,
@@ -296,6 +320,7 @@ def save_results(
             "n_frequent_classes",
             "min_samples",
             "probability",
+            "l2_reg",
         ]
         results_current_run = make_results_df(
             columns=columns,
@@ -358,5 +383,7 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             capture_intermediates=False,
         )
     else:
-        raise ValueError("\nNo model type other than (custom) CNN, ResNet or ViT implemented.\n")
+        raise ValueError(
+            "\nNo model type other than (custom) CNN, ResNet or ViT implemented.\n"
+        )
     return model

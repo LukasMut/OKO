@@ -44,8 +44,8 @@ def parseargs():
         help='number of triplets per mini-batch (i.e., number of subsamples x 3')
     aa('--max_triplets', type=int, nargs='+',
         help='maximum number of triplets during each epoch')
-    aa('--probability_mass', type=float, default=0.8,
-        help='probability mass equally distributed across the k most frequent classes')
+    aa('--probability_masses', type=float, nargs='+',
+        help='probability mass that will be equally distributed among the k most frequent classes')
     aa('--epochs', type=int, nargs='+',
         help='maximum number of epochs')
     aa('--etas', type=float, nargs='+',
@@ -66,6 +66,8 @@ def parseargs():
     aa('--testing', type=str, default='uniform',
         choices=['uniform', 'heterogeneous'],
         help='whether class prior probability at test time should be uniform or similar to training')
+    aa('--regularization', action='store_true',
+        help='apply l2 regularization during training')
     aa('--inference', action='store_true',
         help='whether to perform inference without stepping over the data')
     aa('--collect_reps', action='store_true',
@@ -80,13 +82,14 @@ if __name__ == "__main__":
     # parse arguments
     args = parseargs()
     # get current combination of settings
-    (n_samples, epochs, ooo_batch_size, main_batch_size, eta, max_triplets), rnd_seed = train.get_combination(
+    (n_samples, epochs, ooo_batch_size, main_batch_size, eta, max_triplets), p_mass, rnd_seed = train.get_combination(
         samples=args.samples,
         epochs=args.epochs,
         ooo_batch_sizes=args.ooo_batch_sizes,
         main_batch_sizes=args.main_batch_sizes,
         learning_rates=args.etas,
         max_triplets=args.max_triplets,
+        probability_masses=args.probability_masses,
         seeds=args.seeds,
         )
 
@@ -112,6 +115,7 @@ if __name__ == "__main__":
         ooo_batch_size=ooo_batch_size,
         main_batch_size=main_batch_size,
         max_triplets=max_triplets,
+        p_mass=p_mass,
         eta=eta,
         )
 
