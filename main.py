@@ -101,6 +101,7 @@ if __name__ == "__main__":
     train_set, val_set = utils.get_fewshot_subsets(
         args,
         n_samples=n_samples,
+        probability_mass=p_mass,
         rnd_seed=rnd_seed,
         )
 

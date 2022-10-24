@@ -112,14 +112,16 @@ def get_full_dataset(partitioner: object) -> Tuple[Array, Array]:
     return (images, labels)
 
 
-def get_fewshot_subsets(args, n_samples, rnd_seed) -> Tuple[Array, Array]:
+def get_fewshot_subsets(
+    args, n_samples: int, probability_mass: float, rnd_seed: int
+) -> Tuple[Array, Array]:
     train_partitioner = DataPartitioner(
         dataset=args.dataset,
         data_path=args.data_path,
         n_samples=n_samples,
         seed=rnd_seed,
         min_samples=args.min_samples,
-        probability_mass=args.probability_mass,
+        probability_mass=probability_mass,
         train=True,
     )
     if n_samples:
@@ -134,7 +136,7 @@ def get_fewshot_subsets(args, n_samples, rnd_seed) -> Tuple[Array, Array]:
             n_samples=n_samples,
             seed=rnd_seed,
             min_samples=args.min_samples,
-            probability_mass=args.probability_mass,
+            probability_mass=probability_mass,
             train=False,
         )
         val_set = get_full_dataset(val_partitioner)
