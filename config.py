@@ -41,7 +41,7 @@ def get_configs(args, **kwargs):
 
     model_config.regularization = args.regularization
     if args.regularization:
-        model_config.weight_decay = 1e-5
+        model_config.weight_decay = 1e-4
     model_config.n_classes = args.n_classes
     model_config.task = "Odd-one-out"
     # TODO: enable half precision when running things on TPU
