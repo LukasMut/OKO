@@ -13,7 +13,7 @@
 dataset='cifar10';
 out_path="/home/space/OOOPretraining/results";
 data_path="/home/space/datasets/${dataset}/processed";
-network='Custom';
+network='ResNet18';
 
 testing='uniform';
 n_classes=10;
@@ -41,14 +41,14 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 # export XLA_PYTHON_CLIENT_MEM_FRACTION=.7
 export XLA_PYTHON_CLIENT_ALLOCATOR=platform
 
-logdir="./logs/${dataset}/${network}/${dist}/$SGE_TASK_ID";
-mkdir -p $logdir;
-
 echo "Started odd-one-out learning $SGE_TASK_ID for $network at $(date)"
 
 for sampling in "${sampling_strategies[@]}"; do
 
-	python main.py --out_path $out_path --data_path $data_path --network $network --dataset $dataset --samples ${samples[@]} --optim $optim --sampling $sampling --min_samples $min_samples --probability_masses ${probability_masses[@]} --n_classes $n_classes --max_triplets ${max_triplets[@]} --ooo_batch_sizes ${ooo_batch_sizes[@]} --main_batch_sizes ${main_batch_sizes[@]} --epochs ${max_epochs[@]} --etas ${etas[@]} --burnin $burnin --patience $patience --steps $steps --seeds ${seeds[@]} >> ${logdir}/${dataset}_${sampling}.out
+	logdir="./logs/${dataset}/${network}/${sampling}/$SGE_TASK_ID";
+	mkdir -p $logdir;
+
+	python main.py --out_path $out_path --data_path $data_path --network $network --dataset $dataset --samples ${samples[@]} --optim $optim --sampling $sampling --min_samples $min_samples --probability_masses ${probability_masses[@]} --n_classes $n_classes --max_triplets ${max_triplets[@]} --ooo_batch_sizes ${ooo_batch_sizes[@]} --main_batch_sizes ${main_batch_sizes[@]} --epochs ${max_epochs[@]} --etas ${etas[@]} --burnin $burnin --patience $patience --steps $steps --seeds ${seeds[@]} >> ${logdir}/ooo_${sampling}.out
 
 done
 
