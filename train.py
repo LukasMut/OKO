@@ -34,7 +34,7 @@ def get_combination(
     probability_masses: List[float],
     seeds: List[int],
 ):
-    combs = []
+    combs = [None]
     combs.extend(
         list(
             itertools.product(
