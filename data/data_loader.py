@@ -16,9 +16,10 @@ import jax.numpy as jnp
 import numpy as np
 from einops import rearrange
 from jax import vmap
+from jaxtyping import Array, Float32, Int32, UInt8, jaxtyped
 from ml_collections import config_dict
+from typeguard import typechecked as typechecker
 
-Array = jnp.ndarray
 FrozenDict = config_dict.FrozenConfigDict
 
 
@@ -83,7 +84,11 @@ class DataLoader:
             keys = jax.random.split(key, num=self.data_config.ooo_batch_size)
             return vmap(partial(self.sample_double, q))(keys)
 
-        def sample_triplet(y_prime: Array, triplet: Array) -> List[int]:
+        @jaxtyped
+        @typechecker
+        def sample_triplet(
+            y_prime: Int32[Array, "n"], triplet: Int32[np.ndarray, "k"]
+        ) -> List[np.int32]:
             """Uniformly sample instances/indices for the two classes in a triplet without replacement."""
             instances = []
             for cls in np.unique(triplet):
@@ -91,9 +96,9 @@ class DataLoader:
                 rnd_sample = np.random.choice(
                     np.where(y_prime == cls)[0],
                     size=num_examples,
-                    replace=False,  # sample instances without replacement
+                    replace=False,  # sample instances uniformly without replacement
                     p=None,
-                )
+                ).astype(np.int32)
                 instances.extend(rnd_sample)
             return instances
 
@@ -113,7 +118,13 @@ class DataLoader:
             self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
     @staticmethod
-    def make_tuples(doubles: Array, pair_classes: Array, k: int) -> np.ndarray:
+    @jaxtyped
+    @typechecker
+    def make_tuples(
+        doubles: Int32[Array, "#batch 2"],
+        pair_classes: Int32[np.ndarray, "..."],
+        k: int,
+    ) -> Int32[np.ndarray, "#batch k"]:
         """Make b ordered tuples of k-1 "pair" class instances and one odd-one-out."""
         if k == 3:
             tuples = np.c_[doubles, pair_classes]
@@ -121,7 +132,11 @@ class DataLoader:
             tuples = np.c_[doubles, pair_classes, pair_classes]
         return tuples
 
-    def expand(self, doubles: Array) -> Tuple[Array, Array]:
+    @jaxtyped
+    @typechecker
+    def expand(
+        self, doubles: Int32[Array, "#batch 2"]
+    ) -> Tuple[Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "..."]]:
         pair_classes = np.apply_along_axis(np.random.choice, axis=1, arr=doubles)
         tuples = self.make_tuples(doubles=doubles, pair_classes=pair_classes, k=self.k)
         tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
@@ -144,7 +159,12 @@ class DataLoader:
         """
         return tuples, pair_classes
 
-    def sample_triplets(self, triplets: Array) -> Array:
+    @jaxtyped
+    @typechecker
+    def sample_triplets(
+        self, triplets: Int32[np.ndarray, "#batch 3"]
+    ) -> Int32[np.ndarray, "#batch 3"]:
+        """Sample instances/indices from the corresponding classes."""
         return np.apply_along_axis(self.sample_triplet, arr=triplets, axis=1)
 
     def stepping(self) -> Iterator:
@@ -163,7 +183,11 @@ class DataLoader:
             X, y = self.unzip_pairs(subset)
             yield (X, y)
 
-    def sample_ooo_batch(self, q=None) -> Tuple[Array, Array]:
+    @jaxtyped
+    @typechecker
+    def sample_ooo_batch(
+        self, q=None
+    ) -> Tuple[UInt8[Array, "#batch k h w c"], Float32[Array, "#batch num_cls"]]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         doubles_subset = self.sample_doubles(seed, q=q)
@@ -188,7 +212,13 @@ class DataLoader:
 
         return partial(softmax, self.p)(self.temperature)
 
-    def ooo_batch_balancing(self) -> Tuple[Array, Array]:
+    @jaxtyped
+    @typechecker
+    def ooo_batch_balancing(
+        self,
+    ) -> Iterator[
+        Tuple[UInt8[Array, "#batch k h w c"], Float32[Array, "#batch num_cls"]]
+    ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
         q = self.smoothing() if self.data_config.sampling == "dynamic" else None
         for _ in range(self.num_batches):
