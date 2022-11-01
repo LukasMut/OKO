@@ -38,7 +38,7 @@ class TripletHead(nn.Module):
     def aggregation(
         self, x: Float32[Array, "#batch k d"]
     ) -> Float32[Array, "#batch num_cls"]:
-        dots = vmap(self.agg_query, in_axes=1, out_axes=1)(x)
+        dots = vmap(self.query, in_axes=1, out_axes=1)(x)
         # NOTE: scaling/normalizing does not seem to help
         # dots =/ jnp.sqrt(self.num_classes)
         agg_p = dots.sum(axis=1)
