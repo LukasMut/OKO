@@ -187,7 +187,7 @@ class DataLoader:
     @typechecker
     def sample_ooo_batch(
         self, q=None
-    ) -> Tuple[UInt8[Array, "#batch k h w c"], Float32[Array, "#batch num_cls"]]:
+    ) -> Tuple[UInt8[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         doubles_subset = self.sample_doubles(seed, q=q)
@@ -200,9 +200,7 @@ class DataLoader:
         triplet_subset = self.sample_triplets(triplet_subset)
         triplet_subset = triplet_subset.ravel()
         X = self.X[triplet_subset]
-        X = rearrange(X, "(n k) h w c -> n k h w c", n=X.shape[0] // self.k, k=self.k)
         X = jax.device_put(X)
-        y = jax.device_put(y)
         return (X, y)
 
     def smoothing(self) -> Array:
@@ -217,7 +215,7 @@ class DataLoader:
     def ooo_batch_balancing(
         self,
     ) -> Iterator[
-        Tuple[UInt8[Array, "#batch k h w c"], Float32[Array, "#batch num_cls"]]
+        Tuple[UInt8[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]
     ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
         q = self.smoothing() if self.data_config.sampling == "dynamic" else None

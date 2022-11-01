@@ -107,7 +107,6 @@ def loss_fn_custom(
     batch: Tuple[Array, Array],
 ) -> Tuple[Array, Tuple[Array]]:
     X, y = batch
-    X = rearrange(X, "b k h w c -> (b k) h w c")
     logits = cnn_predict(state=state, params=params, X=X)
     loss = optax.softmax_cross_entropy(logits, y).mean()
     return loss, logits
@@ -120,7 +119,6 @@ def loss_fn_resnet(
     train: bool = True,
 ) -> Tuple[Array, Tuple[Array]]:
     X, y = batch
-    X = rearrange(X, "b k h w c -> (b k) h w c")
     logits, new_state = resnet_predict(state=state, params=params, X=X, train=train)
     loss = optax.softmax_cross_entropy(logits, y).mean()
     aux = (logits, new_state)
@@ -135,7 +133,6 @@ def loss_fn_vit(
     train: bool = True,
 ) -> Tuple[Array, Tuple[Array]]:
     X, y = batch
-    X = rearrange(X, "b k h w c -> (b k) h w c")
     logits, rng = vit_predict(state=state, params=params, rng=rng, X=X, train=train)
     loss = optax.softmax_cross_entropy(logits, y).mean()
     aux = (logits, rng)

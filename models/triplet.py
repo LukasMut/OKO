@@ -9,9 +9,11 @@ import jax.numpy as jnp
 
 from jax import vmap
 from typing import Any
-from einops import rearrange
+from jaxtyping import Array, Float32, jaxtyped
+from typeguard import typechecked as typechecker
 
 Array = jnp.ndarray
+
 
 class TripletHead(nn.Module):
     backbone: str
@@ -30,18 +32,27 @@ class TripletHead(nn.Module):
             )
         else:
             self.query = nn.Dense(self.num_classes, name="triplet_query")
-    
-    def attention(self, x: Array) -> Array:
-        dots = vmap(self.query, in_axes=1, out_axes=1)(x)
-        # return dots / jnp.sqrt(x.shape[-1])
-        return dots
+
+    @jaxtyped
+    @typechecker
+    def aggregation(
+        self, x: Float32[Array, "#batch k d"]
+    ) -> Float32[Array, "#batch num_cls"]:
+        dots = vmap(self.agg_query, in_axes=1, out_axes=1)(x)
+        # NOTE: scaling/normalizing does not seem to help
+        # dots =/ jnp.sqrt(self.num_classes)
+        agg_p = dots.sum(axis=1)
+        return agg_p
 
     @nn.compact
-    def __call__(self, x: Array, train: bool = True) -> Array:
+    @jaxtyped
+    @typechecker
+    def __call__(
+        self, x: Float32[Array, "#batchk d"], train: bool = True
+    ) -> Float32[Array, "#batch num_cls"]:
         if train:
-            x = rearrange(x, "(n k) d -> n k d", n=x.shape[0] // self.k, k=self.k)
-            dots = self.attention(x)
-            out = dots.sum(axis=1)
+            x = jax.lax.reshape(x, (x.shape[0] // self.k, self.k, x.shape[-1]))
+            out = self.aggregation(x)
         else:
             out = self.query(x)
         return out
