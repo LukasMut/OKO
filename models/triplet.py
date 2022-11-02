@@ -3,12 +3,13 @@
 
 __all__ = ["TripletHead"]
 
-import jax
-import flax.linen as nn
-import jax.numpy as jnp
-
-from jax import vmap
 from typing import Any
+
+import flax.linen as nn
+import jax
+import jax.numpy as jnp
+from einops import rearrange
+from jax import vmap
 from jaxtyping import Array, Float32, jaxtyped
 from typeguard import typechecked as typechecker
 
@@ -51,7 +52,7 @@ class TripletHead(nn.Module):
         self, x: Float32[Array, "#batchk d"], train: bool = True
     ) -> Float32[Array, "#batch num_cls"]:
         if train:
-            x = jax.lax.reshape(x, (x.shape[0] // self.k, self.k, x.shape[-1]))
+            x = rearrange(x, "(n k) d -> n k d", n=x.shape[0] // self.k, k=self.k)
             out = self.aggregation(x)
         else:
             out = self.query(x)
