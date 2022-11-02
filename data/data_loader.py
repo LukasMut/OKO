@@ -112,7 +112,7 @@ class DataLoader:
         @typechecker
         def unzip_pairs(
             dataset: List[
-                Tuple[UInt8orFP32[Array, "h w c"], Float32[np.ndarray, "num_cls"]]
+                Tuple[UInt8orFP32[Array, "h w c"], Float32[Array, "num_cls"]]
             ],
             subset: range,
         ) -> Tuple[UInt8orFP32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]:
