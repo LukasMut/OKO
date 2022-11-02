@@ -102,7 +102,14 @@ class DataLoader:
                 instances.extend(rnd_sample)
             return instances
 
-        def unzip_pairs(dataset: Array, subset: range) -> Tuple[Array, Array]:
+        @jaxtyped
+        @typechecker
+        def unzip_pairs(
+            dataset: List[
+                Tuple[Float32[Array, "n h w c"], Float32[Array, "n num_cls"]]
+            ],
+            subset: range,
+        ) -> Tuple[Float32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]:
             """Create tuples of data pairs (X, y)."""
             X, y = zip(*[dataset[i] for i in subset])
             X = jnp.stack(X, axis=0)
@@ -122,7 +129,7 @@ class DataLoader:
     @typechecker
     def make_tuples(
         doubles: Int32[Array, "#batch 2"],
-        pair_classes: Int32[np.ndarray, "..."],
+        pair_classes: Int32[np.ndarray, "#batch"],
         k: int,
     ) -> Int32[np.ndarray, "#batch k"]:
         """Make b ordered tuples of k-1 "pair" class instances and one odd-one-out."""
@@ -136,7 +143,7 @@ class DataLoader:
     @typechecker
     def expand(
         self, doubles: Int32[Array, "#batch 2"]
-    ) -> Tuple[Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "..."]]:
+    ) -> Tuple[Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "#batch"]]:
         pair_classes = np.apply_along_axis(np.random.choice, axis=1, arr=doubles)
         tuples = self.make_tuples(doubles=doubles, pair_classes=pair_classes, k=self.k)
         tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
@@ -148,13 +155,6 @@ class DataLoader:
             ]
         )
         return tuples, ooo_classes
-        ooo_indices = np.array(
-            [
-                np.where(triplet != sim_cls)[0][0]
-                for triplet, sim_cls in zip(triplets, pair_classes)
-            ]
-        )
-        return tuples, ooo_indices, pair_classes
 
         """
         return tuples, pair_classes
@@ -162,12 +162,18 @@ class DataLoader:
     @jaxtyped
     @typechecker
     def sample_triplets(
-        self, triplets: Int32[np.ndarray, "#batch 3"]
-    ) -> Int32[np.ndarray, "#batch 3"]:
+        self, triplets: Int32[np.ndarray, "#batch k"]
+    ) -> Int32[np.ndarray, "#batch k"]:
         """Sample instances/indices from the corresponding classes."""
         return np.apply_along_axis(self.sample_triplet, arr=triplets, axis=1)
 
-    def stepping(self) -> Iterator:
+    @jaxtyped
+    @typechecker
+    def stepping(
+        self,
+    ) -> Iterator[
+        Tuple[Float32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]
+    ]:
         """Step over the entire training data in mini-batches of size B."""
         for i in range(self.num_batches):
             if self.remainder != 0 and i == int(self.num_batches - 1):
@@ -191,10 +197,6 @@ class DataLoader:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         doubles_subset = self.sample_doubles(seed, q=q)
-        # NOTE: the two lines below are necessary for performing a triplet odd-one-out task,
-        # using indexes rather than classes as possible choices
-        # triplet_subset, ooo_subset, pair_classes = self.expand(doubles_subset)
-        # y = jax.nn.one_hot(x=ooo_subset, num_classes=3)
         triplet_subset, pair_classes = self.expand(doubles_subset)
         y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
         triplet_subset = self.sample_triplets(triplet_subset)
