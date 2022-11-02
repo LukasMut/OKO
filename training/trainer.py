@@ -48,7 +48,7 @@ class OOOTrainer:
 
         self.logger = SummaryWriter(log_dir=self.dir_config.log_dir)
         self.early_stop = EarlyStopping(
-            min_delta=1e-3, patience=self.optimizer_config.patience
+            min_delta=1e-4, patience=self.optimizer_config.patience
         )
         # create jitted train and eval functions
         self.create_functions()
@@ -236,7 +236,7 @@ class OOOTrainer:
         self, batch: Tuple[Array], aux, cls_hits: Dict[int, int]
     ) -> Array:
         logits = aux[0] if isinstance(aux, tuple) else aux
-        _, y = batch
+        _, y, _ = batch
         batch_hits = utils.class_hits(logits, y)
         acc = self.collect_hits(
             cls_hits=cls_hits,
@@ -300,7 +300,7 @@ class OOOTrainer:
                     "val/acc", np.asarray(test_performance[1]), global_step=epoch
                 )
                 print(
-                    f"Epoch: {epoch:04d}, Train Loss: {train_performance[0]:.4f}, Train Acc: {train_performance[1]:.4f}, Val Loss: {test_performance[0]:.4f}, Val Acc: {test_performance[1]:.4f}\n"
+                    f"Epoch: {epoch:03d}, Train Loss: {train_performance[0]:.4f}, Train Acc: {train_performance[1]:.4f}, Val Loss: {test_performance[0]:.4f}, Val Acc: {test_performance[1]:.4f}\n"
                 )
                 self.logger.flush()
 
@@ -315,8 +315,8 @@ class OOOTrainer:
                 """
 
             if epoch > self.optimizer_config.burnin:
-                _, early_stop = self.early_stop.update(test_performance[1])
-                if early_stop.should_stop:
+                _, self.early_stop = self.early_stop.update(test_performance[1])
+                if self.early_stop.should_stop:
                     print("\nMet early stopping criteria, stopping training...\n")
                     break
 

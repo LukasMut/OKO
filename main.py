@@ -52,9 +52,9 @@ def parseargs():
         help='learning rate for optimizer')
     aa('--optim', type=str, default='sgd',
         choices=['adam', 'adamw', 'radam', 'sgd', 'rmsprop'])
-    aa('--burnin', type=int, default=20,
+    aa('--burnin', type=int, default=30,
         help='burnin period before which convergence criterion is not evaluated (is equal to min number of epochs')
-    aa('--patience', type=int, default=10,
+    aa('--patience', type=int, default=15,
         help='Number of steps of no improvement before stopping training')
     aa('--steps', type=int,
         help='save intermediate parameters every <steps> epochs')
