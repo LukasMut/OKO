@@ -109,10 +109,10 @@ class DataLoader:
         @typechecker
         def unzip_pairs(
             dataset: List[
-                Tuple[Float32[Array, "n h w c"], Float32[Array, "n num_cls"]]
+                Tuple[UInt8orFP32[Array, "n h w c"], Float32[Array, "n num_cls"]]
             ],
             subset: range,
-        ) -> Tuple[Float32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]:
+        ) -> Tuple[UInt8orFP32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]:
             """Create tuples of data pairs (X, y)."""
             X, y = zip(*[dataset[i] for i in subset])
             X = jnp.stack(X, axis=0)
@@ -175,7 +175,7 @@ class DataLoader:
     def stepping(
         self,
     ) -> Iterator[
-        Tuple[Float32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]
+        Tuple[UInt8orFP32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]
     ]:
         """Step over the entire training data in mini-batches of size B."""
         for i in range(self.num_batches):
