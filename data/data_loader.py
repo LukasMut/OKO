@@ -14,13 +14,16 @@ from typing import Iterator, List, Tuple
 import jax
 import jax.numpy as jnp
 import numpy as np
-from einops import rearrange
 from jax import vmap
-from jaxtyping import Array, Float32, Int32, UInt8, jaxtyped
+from jaxtyping import AbstractDtype, Array, Float32, Int32, jaxtyped
 from ml_collections import config_dict
 from typeguard import typechecked as typechecker
 
 FrozenDict = config_dict.FrozenConfigDict
+
+
+class UInt8orFP32(AbstractDtype):
+    dtypes = ["uint8", "float32"]
 
 
 @dataclass(init=True, repr=True)
@@ -193,7 +196,7 @@ class DataLoader:
     @typechecker
     def sample_ooo_batch(
         self, q=None
-    ) -> Tuple[UInt8[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]:
+    ) -> Tuple[UInt8orFP32[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         doubles_subset = self.sample_doubles(seed, q=q)
@@ -217,7 +220,7 @@ class DataLoader:
     def ooo_batch_balancing(
         self,
     ) -> Iterator[
-        Tuple[UInt8[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]
+        Tuple[UInt8orFP32[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]
     ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
         q = self.smoothing() if self.data_config.sampling == "dynamic" else None
