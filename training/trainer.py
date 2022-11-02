@@ -236,7 +236,7 @@ class OOOTrainer:
         self, batch: Tuple[Array], aux, cls_hits: Dict[int, int]
     ) -> Array:
         logits = aux[0] if isinstance(aux, tuple) else aux
-        _, y, _ = batch
+        _, y = batch
         batch_hits = utils.class_hits(logits, y)
         acc = self.collect_hits(
             cls_hits=cls_hits,
