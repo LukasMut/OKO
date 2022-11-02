@@ -3,12 +3,14 @@
 
 __all__ = ["DataLoader"]
 
+from cmath import exp
 import copy
 import math
 import random
 from collections import Counter
 from dataclasses import dataclass
 from functools import partial
+from signal import raise_signal
 from typing import Iterator, List, Tuple
 
 import jax
@@ -59,6 +61,7 @@ class DataLoader:
                 self.data_config.max_triplets / self.data_config.ooo_batch_size
             )
         else:
+            
             self.dataset = list(zip(self.X, self.y))
             self.num_batches = math.ceil(
                 len(self.dataset) / self.data_config.main_batch_size
@@ -109,7 +112,7 @@ class DataLoader:
         @typechecker
         def unzip_pairs(
             dataset: List[
-                Tuple[UInt8orFP32[Array, "n h w c"], Float32[Array, "n num_cls"]]
+                Tuple[UInt8orFP32[Array, "h w c"], Float32[np.ndarray, "num_cls"]]
             ],
             subset: range,
         ) -> Tuple[UInt8orFP32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]:
