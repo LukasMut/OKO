@@ -154,6 +154,7 @@ def batch_inference(
 
 def inference(
     out_path: str,
+    epoch: int,
     trainer: object,
     X_test: Array,
     y_test: Array,
@@ -200,6 +201,7 @@ def inference(
 
     save_results(
         out_path=out_path,
+        epoch=epoch,
         performance=test_performance,
         cls_distribution=cls_distribution,
         model_config=model_config,
@@ -236,6 +238,7 @@ def get_cls_subset_performances(
 
 def make_results_df(
     columns: List[str],
+    epoch: int,
     performance: FrozenDict,
     cls_distribution: Dict[int, int],
     model_config: FrozenDict,
@@ -272,11 +275,13 @@ def make_results_df(
     results_current_run["min_samples"] = data_config.min_samples
     results_current_run["probability"] = data_config.class_probs
     results_current_run["l2_reg"] = model_config.regularization
+    results_current_run["convergence_time"] = epoch
     return results_current_run
 
 
 def save_results(
     out_path: str,
+    epoch: int,
     performance: FrozenDict,
     cls_distribution: Dict[int, int],
     model_config: FrozenDict,
@@ -293,6 +298,7 @@ def save_results(
         results_overall = pd.read_pickle(os.path.join(out_path, "results.pkl"))
         results_current_run = make_results_df(
             columns=results_overall.columns.values,
+            epoch=epoch,
             performance=performance,
             cls_distribution=cls_distribution,
             model_config=model_config,
@@ -321,9 +327,11 @@ def save_results(
             "min_samples",
             "probability",
             "l2_reg",
+            "convergence_time",
         ]
         results_current_run = make_results_df(
             columns=columns,
+            epoch=epoch,
             performance=performance,
             cls_distribution=cls_distribution,
             model_config=model_config,
