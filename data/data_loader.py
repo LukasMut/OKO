@@ -10,8 +10,7 @@ import random
 from collections import Counter
 from dataclasses import dataclass
 from functools import partial
-from signal import raise_signal
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -112,7 +111,7 @@ class DataLoader:
         @typechecker
         def unzip_pairs(
             dataset: List[
-                Tuple[UInt8orFP32[Array, "h w c"], Float32[Array, "num_cls"]]
+                Tuple[UInt8orFP32[Array, "h w c"], Float32[Union[Array, np.ndarray], "num_cls"]]
             ],
             subset: range,
         ) -> Tuple[UInt8orFP32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]:
