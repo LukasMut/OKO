@@ -3,14 +3,13 @@
 
 __all__ = ["DataLoader"]
 
-from cmath import exp
 import copy
 import math
 import random
 from collections import Counter
 from dataclasses import dataclass
 from functools import partial
-from typing import Iterator, List, Tuple, Union
+from typing import Iterator, List, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -42,6 +41,7 @@ class DataLoader:
         self.device_num = random.choices(range(num_gpus))[0]
         self.X = self.data[0]
         self.y = copy.deepcopy(self.data[1])
+        self.y = jax.device_put(self.y)
 
         # seed random number generator
         np.random.seed(self.seed)
@@ -60,7 +60,7 @@ class DataLoader:
                 self.data_config.max_triplets / self.data_config.ooo_batch_size
             )
         else:
-            
+
             self.dataset = list(zip(self.X, self.y))
             self.num_batches = math.ceil(
                 len(self.dataset) / self.data_config.main_batch_size
@@ -111,10 +111,12 @@ class DataLoader:
         @typechecker
         def unzip_pairs(
             dataset: List[
-                Tuple[UInt8orFP32[Array, "h w c"], Float32[Union[Array, np.ndarray], "num_cls"]]
+                Tuple[UInt8orFP32[Array, "h w c"], Float32[Array, "num_cls"]]
             ],
             subset: range,
-        ) -> Tuple[UInt8orFP32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]:
+        ) -> Tuple[
+            UInt8orFP32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]
+        ]:
             """Create tuples of data pairs (X, y)."""
             X, y = zip(*[dataset[i] for i in subset])
             X = jnp.stack(X, axis=0)
