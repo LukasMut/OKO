@@ -170,6 +170,7 @@ if __name__ == "__main__":
 
     train.inference(
         out_path=args.out_path,
+        epoch=epoch,
         trainer=trainer,
         X_test=X_test,
         y_test=y_test,
