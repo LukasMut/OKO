@@ -13,7 +13,7 @@
 dataset='cifar10';
 out_path="/home/space/OOOPretraining/results";
 data_path="/home/space/datasets/${dataset}/processed";
-network='ResNet18';
+network='Custom';
 
 testing='uniform';
 n_classes=10;
@@ -27,7 +27,7 @@ sampling_strategies=( 'uniform' 'dynamic' );
 probability_masses=( 0.8 0.85 0.9 0.95 ); 
 samples=( 40 50 100 500 1000 2000 );
 max_epochs=( 300 300 300 200 200 200 );
-ooo_batch_sizes=( 64 64 64 128 128 128 );
+ooo_batch_sizes=( 128 128 128 128 128 256 );
 main_batch_sizes=( 16 16 32 32 64 128 );
 etas=( 0.001 0.001 0.001 0.001 0.001 0.001 );
 max_triplets=( 2000 3000 4000 5000 10000 20000 );
