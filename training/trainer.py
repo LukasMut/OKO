@@ -110,8 +110,9 @@ class OOOTrainer:
         lr_schedule = optax.piecewise_constant_schedule(
             init_value=self.optimizer_config.lr,
             boundaries_and_scales={
-                int(len(train_batches) * self.optimizer_config.epochs * 0.6): 0.1,
-                int(len(train_batches) * self.optimizer_config.epochs * 0.85): 0.1,
+                int(len(train_batches) * self.optimizer_config.epochs * 0.25): 0.1,
+                int(len(train_batches) * self.optimizer_config.epochs * 0.5): 0.1,
+                int(len(train_batches) * self.optimizer_config.epochs * 0.75): 0.1,
             },
         )
         # clip gradients at maximum value
