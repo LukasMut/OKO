@@ -107,13 +107,18 @@ class OOOTrainer:
             opt_hypers["nesterov"] = True
 
         # we decrease the learning rate by a factor of 0.1 after 60% and 85% of the training
+        if self.data_config["name"] == 'cifar10':
+            steps = [0.25, 0.5, 0.75]
+        else:
+            steps = [0.3, 0.6, 0.9]
+        schedule = {
+            int(len(train_batches) * self.optimizer_config.epochs * steps[0]): 0.1,
+            int(len(train_batches) * self.optimizer_config.epochs * steps[1]): 0.1,
+            int(len(train_batches) * self.optimizer_config.epochs * steps[2]): 0.1,
+        } 
         lr_schedule = optax.piecewise_constant_schedule(
             init_value=self.optimizer_config.lr,
-            boundaries_and_scales={
-                int(len(train_batches) * self.optimizer_config.epochs * 0.25): 0.1,
-                int(len(train_batches) * self.optimizer_config.epochs * 0.5): 0.1,
-                int(len(train_batches) * self.optimizer_config.epochs * 0.75): 0.1,
-            },
+            boundaries_and_scales=schedule,
         )
         # clip gradients at maximum value
         transf = [optax.clip(1.0)]
