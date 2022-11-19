@@ -23,10 +23,11 @@ burnin=30;
 patience=15;
 steps=40;
 
-sampling_strategies=( 'uniform' 'dynamic' );
+# sampling_strategies=( 'uniform' 'dynamic' );
+sampling_strategies=( 'uniform' );
 probability_masses=( 0.75 0.8 0.85 0.9 ); 
 samples=( 40 50 100 500 1000 2000 );
-max_epochs=( 300 300 300 200 200 200 );
+max_epochs=( 100 100 100 200 200 200 );
 ooo_batch_sizes=( 64 64 128 128 128 256 );
 main_batch_sizes=( 16 16 32 32 64 128 );
 etas=( 0.001 0.001 0.001 0.001 0.001 0.001 );
