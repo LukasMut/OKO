@@ -150,21 +150,18 @@ class DataLoader:
     @typechecker
     def expand(
         self, doubles: Int32[Array, "#batch 2"]
-    ) -> Tuple[Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "#batch"]]:
+    ) -> Tuple[Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "#batch"], Int32[np.ndarray, "#batch"]]:
         pair_classes = np.apply_along_axis(np.random.choice, axis=1, arr=doubles)
         tuples = self.make_tuples(doubles=doubles, pair_classes=pair_classes, k=self.k)
         tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
-        """
         ooo_classes = np.array(
             [
-                triplet[np.where(triplet != sim_cls)[0][0]]
-                for triplet, sim_cls in zip(triplets, pair_classes)
+                tuple[np.where(tuple != sim_cls)[0][0]]
+                for tuple, sim_cls in zip(tuples, pair_classes)
             ]
         )
-        return tuples, ooo_classes
-
-        """
-        return tuples, pair_classes
+        # return tuples, ooo_classes
+        return tuples, pair_classes, ooo_classes
 
     @jaxtyped
     @typechecker
@@ -196,6 +193,18 @@ class DataLoader:
             X, y = self.unzip_pairs(subset)
             yield (X, y)
 
+
+    @jaxtyped
+    @typechecker
+    def _make_labels(self, 
+        pair_classes: Int32[np.ndarray, "#batch"], 
+        ooo_classes: Int32[np.ndarray, "#batch"]
+        ) -> Float32[Array, "#batch num_cls"]:
+        y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes) * (self.k - 1)
+        y_o = jax.nn.one_hot(x=ooo_classes, num_classes=self.num_classes)
+        y = (y_p + y_o) / self.k
+        return y
+
     @jaxtyped
     @typechecker
     def sample_ooo_batch(
@@ -204,8 +213,11 @@ class DataLoader:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         doubles_subset = self.sample_doubles(seed, q=q)
-        triplet_subset, pair_classes = self.expand(doubles_subset)
-        y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
+        # NOTE: two lines below are from the "old" version where we only need pair classes (hard targets)
+        # triplet_subset, pair_classes = self.expand(doubles_subset)
+        # y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
+        triplet_subset, pair_classes, ooo_classes = self.expand(doubles_subset)
+        y = self._make_labels(pair_classes, ooo_classes)
         triplet_subset = self.sample_triplets(triplet_subset)
         triplet_subset = triplet_subset.ravel()
         X = self.X[triplet_subset]
