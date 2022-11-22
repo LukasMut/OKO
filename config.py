@@ -46,7 +46,7 @@ def get_configs(args, **kwargs):
         else:
             model_config.weight_decay = 1e-4
     model_config.n_classes = args.n_classes
-    model_config.task = "Odd-one-out"
+    model_config.task = "Odd-one-out (bimodal)"
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
 
