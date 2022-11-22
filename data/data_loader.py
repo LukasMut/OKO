@@ -91,13 +91,13 @@ class DataLoader:
 
         @jaxtyped
         @typechecker
-        def sample_triplet(
-            y_prime: Int32[Array, "n"], triplet: Int32[np.ndarray, "k"]
+        def sample_tuple(
+            y_prime: Int32[Array, "n"], tuple: Int32[np.ndarray, "k"]
         ) -> List[np.int32]:
-            """Uniformly sample instances/indices for the two classes in a triplet without replacement."""
+            """Uniformly sample instances/indices for the two classes in a tuple without replacement."""
             instances = []
-            for cls in np.unique(triplet):
-                num_examples = np.count_nonzero(triplet == cls)
+            for cls in np.unique(tuple):
+                num_examples = np.count_nonzero(tuple == cls)
                 rnd_sample = np.random.choice(
                     np.where(y_prime == cls)[0],
                     size=num_examples,
@@ -127,7 +127,7 @@ class DataLoader:
         if self.train:
             self.sample_double = partial(sample_double, self.ooo_classes)
             self.sample_doubles = sample_doubles
-            self.sample_triplet = partial(sample_triplet, self.y_prime)
+            self.sample_tuple = partial(sample_tuple, self.y_prime)
         else:
             self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
@@ -150,26 +150,33 @@ class DataLoader:
     @typechecker
     def expand(
         self, doubles: Int32[Array, "#batch 2"]
-    ) -> Tuple[Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "#batch"], Int32[np.ndarray, "#batch"]]:
+    ) -> Tuple[
+        Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "#batch"]
+    ]:  # , Int32[np.ndarray, "#batch"]]:
         pair_classes = np.apply_along_axis(np.random.choice, axis=1, arr=doubles)
+        """
         tuples = self.make_tuples(doubles=doubles, pair_classes=pair_classes, k=self.k)
-        tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
+        
         ooo_classes = np.array(
             [
                 tuple[np.where(tuple != sim_cls)[0][0]]
                 for tuple, sim_cls in zip(tuples, pair_classes)
             ]
         )
-        # return tuples, ooo_classes
-        return tuples, pair_classes, ooo_classes
+        """
+        tuples = np.c_[pair_classes, pair_classes]
+        tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
+        return tuples, pair_classes
+        # return tuples, pait_classes
+        # return tuples, pair_classes, ooo_classes
 
     @jaxtyped
     @typechecker
-    def sample_triplets(
-        self, triplets: Int32[np.ndarray, "#batch k"]
+    def sample_tuples(
+        self, tuples: Int32[np.ndarray, "#batch k"]
     ) -> Int32[np.ndarray, "#batch k"]:
         """Sample instances/indices from the corresponding classes."""
-        return np.apply_along_axis(self.sample_triplet, arr=triplets, axis=1)
+        return np.apply_along_axis(self.sample_tuple, arr=tuples, axis=1)
 
     @jaxtyped
     @typechecker
@@ -193,14 +200,16 @@ class DataLoader:
             X, y = self.unzip_pairs(subset)
             yield (X, y)
 
-
     @jaxtyped
     @typechecker
-    def _make_labels(self, 
-        pair_classes: Int32[np.ndarray, "#batch"], 
-        ooo_classes: Int32[np.ndarray, "#batch"]
-        ) -> Float32[Array, "#batch num_cls"]:
-        y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes) * (self.k - 1)
+    def _make_bimodal_targets(
+        self,
+        pair_classes: Int32[np.ndarray, "#batch"],
+        ooo_classes: Int32[np.ndarray, "#batch"],
+    ) -> Float32[Array, "#batch num_cls"]:
+        y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes) * (
+            self.k - 1
+        )
         y_o = jax.nn.one_hot(x=ooo_classes, num_classes=self.num_classes)
         y = (y_p + y_o) / self.k
         return y
@@ -213,14 +222,15 @@ class DataLoader:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         doubles_subset = self.sample_doubles(seed, q=q)
-        # NOTE: two lines below are from the "old" version where we only need pair classes (hard targets)
-        # triplet_subset, pair_classes = self.expand(doubles_subset)
-        # y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
-        triplet_subset, pair_classes, ooo_classes = self.expand(doubles_subset)
-        y = self._make_labels(pair_classes, ooo_classes)
-        triplet_subset = self.sample_triplets(triplet_subset)
-        triplet_subset = triplet_subset.ravel()
-        X = self.X[triplet_subset]
+        # NOTE: two lines below are used to create hard-targets with a point mass at the pair class
+        tuple_subset, pair_classes = self.expand(doubles_subset)
+        y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
+        # NOTE: two lines below are used to create soft-targets with a bimodal distribution (pair and odd-one-out class)
+        # tuple_subset, pair_classes, ooo_classes = self.expand(doubles_subset)
+        # y = self._make_bimodal_targets(pair_classes, ooo_classes)
+        tuple_subset = self.sample_tuples(tuple_subset)
+        tuple_subset = tuple_subset.ravel()
+        X = self.X[tuple_subset]
         X = jax.device_put(X)
         return (X, y)
 

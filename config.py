@@ -46,7 +46,11 @@ def get_configs(args, **kwargs):
         else:
             model_config.weight_decay = 1e-4
     model_config.n_classes = args.n_classes
-    model_config.task = "Odd-one-out (bimodal)"
+
+    # model_config.task = "Odd-one-out"
+    # model_config.task = "Odd-one-out (bimodal)"
+    model_config.task = "Pair"
+
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
 
@@ -54,7 +58,8 @@ def get_configs(args, **kwargs):
     optimizer_config.name = args.optim
     optimizer_config.burnin = args.burnin
     optimizer_config.patience = args.patience
-    optimizer_config.lr = kwargs.pop("eta")
+    optimizer_config.lr = kwargs.pop("
+    eta")
     optimizer_config.epochs = kwargs.pop("epochs")
 
     if optimizer_config.name.lower() == "sgd":
