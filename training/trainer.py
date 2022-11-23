@@ -43,6 +43,8 @@ class OOOTrainer:
         self.rng = jax.random.PRNGKey(self.rnd_seed)
         # freeze model config dictionary (i.e., make it immutable)
         self.model_config = FrozenDict(self.model_config)
+        # number of elements in tuple
+        self.k = 4
         # inititalize model
         self.init_model()
 
@@ -68,7 +70,7 @@ class OOOTrainer:
             H, W, C = self.data_config.input_dim
 
         def get_init_batch(batch_size: int) -> Array:
-            return random.normal(key_i, shape=(batch_size * 3, H, W, C))
+            return random.normal(key_i, shape=(batch_size * self.k , H, W, C))
 
         if self.model_config["type"].lower() == "resnet":
             batch = get_init_batch(self.data_config.ooo_batch_size)
