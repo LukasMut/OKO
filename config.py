@@ -58,8 +58,7 @@ def get_configs(args, **kwargs):
     optimizer_config.name = args.optim
     optimizer_config.burnin = args.burnin
     optimizer_config.patience = args.patience
-    optimizer_config.lr = kwargs.pop("
-    eta")
+    optimizer_config.lr = kwargs.pop("eta")
     optimizer_config.epochs = kwargs.pop("epochs")
 
     if optimizer_config.name.lower() == "sgd":
