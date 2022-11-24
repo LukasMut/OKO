@@ -56,7 +56,7 @@ class DataLoader:
         self.ooo_classes = np.unique(self.y_prime)
 
         if self.train:
-            self.k = 4
+            self.k = 5
             self.num_batches = math.ceil(
                 self.data_config.max_triplets / self.data_config.ooo_batch_size
             )
@@ -81,7 +81,7 @@ class DataLoader:
 
     def create_functions(self) -> None:
         def sample_double(classes: Array, q: float, key: Array) -> Array:
-            return jax.random.choice(key, classes, shape=(3,), replace=False, p=q)
+            return jax.random.choice(key, classes, shape=(4,), replace=False, p=q)
 
         @partial(jax.jit, static_argnames=["seed"])
         def sample_doubles(seed: int, q=None) -> Array:
@@ -136,7 +136,7 @@ class DataLoader:
     @jaxtyped
     @typechecker
     def make_tuples(
-        doubles: Int32[Array, "#batch 3"],
+        doubles: Int32[Array, "#batch 4"],
         pair_classes: Int32[np.ndarray, "#batch"],
         k: int,
     ) -> Int32[np.ndarray, "#batch k"]:
