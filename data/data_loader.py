@@ -56,7 +56,7 @@ class DataLoader:
         self.ooo_classes = np.unique(self.y_prime)
 
         if self.train:
-            self.k = 5
+            self.k = 6
             self.num_batches = math.ceil(
                 self.data_config.max_triplets / self.data_config.ooo_batch_size
             )
@@ -81,7 +81,7 @@ class DataLoader:
 
     def create_functions(self) -> None:
         def sample_double(classes: Array, q: float, key: Array) -> Array:
-            return jax.random.choice(key, classes, shape=(4,), replace=False, p=q)
+            return jax.random.choice(key, classes, shape=(5,), replace=False, p=q)
 
         @partial(jax.jit, static_argnames=["seed"])
         def sample_doubles(seed: int, q=None) -> Array:
@@ -136,7 +136,7 @@ class DataLoader:
     @jaxtyped
     @typechecker
     def make_tuples(
-        doubles: Int32[Array, "#batch 4"],
+        doubles: Int32[Array, "#batch 5"],
         pair_classes: Int32[np.ndarray, "#batch"],
         k: int,
     ) -> Int32[np.ndarray, "#batch k"]:
@@ -158,13 +158,14 @@ class DataLoader:
         tuples = self.make_tuples(doubles=doubles, pair_classes=pair_classes, k=self.k)
         tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
         # multiple odd classes
+        """
         ooo_classes = np.array(
             [
                 tuple[np.where(tuple != sim_cls)[0]]
                 for tuple, sim_cls in zip(tuples, pair_classes)
             ]
         )
-        """
+        
         # a single odd-one-out class
         ooo_classes = np.array(
             [
@@ -177,8 +178,8 @@ class DataLoader:
         # tuples = np.c_[pair_classes, pair_classes]
         # tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
 
-        # return tuples, pair_classes
-        return tuples, pair_classes, ooo_classes
+        return tuples, pair_classes
+        # return tuples, pair_classes, ooo_classes
 
     @jaxtyped
     @typechecker
@@ -248,13 +249,13 @@ class DataLoader:
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
         doubles_subset = self.sample_doubles(seed, q=q)
         # NOTE: two lines below are used to create "hard" targets with a point mass at the pair class
-        # tuple_subset, pair_classes = self.expand(doubles_subset)
-        # y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
+        tuple_subset, pair_classes = self.expand(doubles_subset)
+        y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
         
         # NOTE: two lines below are used to create soft-targets with a multi-modal distribution (pair and odd class(es))
-        tuple_subset, pair_classes, ooo_classes = self.expand(doubles_subset)
+        # tuple_subset, pair_classes, ooo_classes = self.expand(doubles_subset)
         # y = self._make_bimodal_targets(pair_classes, ooo_classes)
-        y = self._make_multimodal_targets(pair_classes, ooo_classes)
+        # y = self._make_multimodal_targets(pair_classes, ooo_classes)
         tuple_subset = self.sample_tuples(tuple_subset)
         tuple_subset = tuple_subset.ravel()
         X = self.X[tuple_subset]

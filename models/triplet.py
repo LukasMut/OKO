@@ -19,7 +19,7 @@ Array = jnp.ndarray
 class TripletHead(nn.Module):
     backbone: str
     num_classes: int
-    k: int = 5
+    k: int = 6
     dtype: Any = jnp.float32
 
     def setup(self):

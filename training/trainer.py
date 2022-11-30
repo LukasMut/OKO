@@ -44,7 +44,7 @@ class OOOTrainer:
         # freeze model config dictionary (i.e., make it immutable)
         self.model_config = FrozenDict(self.model_config)
         # number of elements in tuple
-        self.k = 5
+        self.k = 6
         # inititalize model
         self.init_model()
 

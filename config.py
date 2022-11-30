@@ -49,7 +49,8 @@ def get_configs(args, **kwargs):
 
     # model_config.task = "Odd-one-out"
     # model_config.task = "Odd-one-out (bimodal)"
-    model_config.task = "Odd-ond-out (multimodal)"
+    # model_config.task = "Odd-ond-out (multimodal)"
+    model_config.task = "Odd-ond-out (four odds)"
 
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
