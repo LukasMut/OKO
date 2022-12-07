@@ -52,7 +52,7 @@ def get_combination(
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"
-    return combs[1]  # combs[int(os.environ["SGE_TASK_ID"])]
+    return combs[int(os.environ["SGE_TASK_ID"])]
 
 
 def make_path(
@@ -270,6 +270,7 @@ def make_results_df(
     results_current_run["training"] = model_config.task
     results_current_run["sampling"] = data_config.sampling
     results_current_run["weighting"] = False
+    results_current_run["targets"] = data_config.targets
     results_current_run["n_samples"] = data_config.n_samples * data_config.n_classes
     results_current_run["n_frequent_classes"] = data_config.n_frequent_classes
     results_current_run["min_samples"] = data_config.min_samples
@@ -323,6 +324,7 @@ def save_results(
             "sampling",
             "weighting",
             "n_samples",
+            "targets",
             "n_frequent_classes",
             "min_samples",
             "probability",

@@ -49,10 +49,10 @@ def get_configs(args, **kwargs):
             model_config.weight_decay = 1e-4
     model_config.n_classes = args.n_classes
 
-    # model_config.task = "Odd-one-out"
-    # model_config.task = "Odd-one-out (bimodal)"
-    # model_config.task = "Odd-ond-out (multimodal)"
-    model_config.task = "Odd-ond-out (four odds)"
+    if data_config.k == 0:
+        model_config.task == "Pair"
+    else:
+        model_config.task = f"Odd-$k$-out ($k$={data_config.k}; {data_config.targets})"
 
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
