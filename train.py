@@ -185,7 +185,7 @@ def inference(
             probas = jax.nn.softmax(logits)
         except (RuntimeError, MemoryError):
             warnings.warn(
-                "\nTest set does not fit into the GPU's memory.\nSplitting test set into small batches to counteract memory problems.\n"
+                "\nTest set does not fit into the GPU's memory.\nSplitting test set into small batches and running batch-wise inference to counteract memory problems.\n"
             )
             assert isinstance(
                 batch_size, int
