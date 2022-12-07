@@ -13,10 +13,13 @@
 dataset='cifar10';
 out_path="/home/space/OOOPretraining/results";
 data_path="/home/space/datasets/${dataset}/processed";
+# network='ResNet18';
 network='Custom';
 
 testing='uniform';
 n_classes=10;
+k=4;
+targets='soft';
 min_samples=5;
 optim='sgd';
 burnin=30;
@@ -28,9 +31,10 @@ sampling_strategies=( 'uniform' );
 probability_masses=( 0.75 0.8 0.85 0.9 ); 
 samples=( 40 50 100 500 1000 2000 );
 max_epochs=( 100 100 100 200 200 200 );
-ooo_batch_sizes=( 64 64 128 128 128 256 );
+oko_batch_sizes=( 64 64 128 128 128 256 );
 main_batch_sizes=( 16 16 32 32 64 128 );
 etas=( 0.001 0.001 0.001 0.001 0.001 0.001 );
+# etas=( 0.01 0.01 0.01 0.01 0.01 0.01 );
 max_triplets=( 2000 3000 4000 5000 10000 20000 );
 seeds=( 0 1 2 3 4 );
 
@@ -49,7 +53,7 @@ for sampling in "${sampling_strategies[@]}"; do
 	logdir="./logs/${dataset}/${network}/${sampling}/$SGE_TASK_ID";
 	mkdir -p $logdir;
 
-	python main.py --out_path $out_path --data_path $data_path --network $network --dataset $dataset --samples ${samples[@]} --optim $optim --sampling $sampling --min_samples $min_samples --probability_masses ${probability_masses[@]} --n_classes $n_classes --max_triplets ${max_triplets[@]} --ooo_batch_sizes ${ooo_batch_sizes[@]} --main_batch_sizes ${main_batch_sizes[@]} --epochs ${max_epochs[@]} --etas ${etas[@]} --burnin $burnin --patience $patience --steps $steps --seeds ${seeds[@]} --regularization >> ${logdir}/ooo_${sampling}.out
+	python main.py --out_path $out_path --data_path $data_path --network $network --dataset $dataset --samples ${samples[@]} --optim $optim --sampling $sampling --min_samples $min_samples --probability_masses ${probability_masses[@]} --n_classes $n_classes --targets $targets --k $k --max_triplets ${max_triplets[@]} --oko_batch_sizes ${oko_batch_sizes[@]} --main_batch_sizes ${main_batch_sizes[@]} --epochs ${max_epochs[@]} --etas ${etas[@]} --burnin $burnin --patience $patience --steps $steps --seeds ${seeds[@]} --regularization >> ${logdir}/ooo_${sampling}.out
 
 done
 
