@@ -238,7 +238,7 @@ class OKOTrainer:
         loss = optax.softmax_cross_entropy(logits, y).mean()
         batch_hits = utils.class_hits(logits, y)
         acc = self.collect_hits(cls_hits=cls_hits, batch_hits=batch_hits)
-        return loss.item(), acc
+        return loss.item(), acc, logits
 
     def compute_accuracy(
         self, batch: Tuple[Array], aux, cls_hits: Dict[int, int]
@@ -273,7 +273,7 @@ class OKOTrainer:
                     batch=batch, aux=aux, cls_hits=cls_hits
                 )
             else:
-                loss, cls_hits = self.eval_step(
+                loss, cls_hits, _ = self.eval_step(
                     batch=batch,
                     cls_hits=cls_hits,
                 )

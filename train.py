@@ -142,14 +142,18 @@ def batch_inference(
     batch_size: int,
 ) -> Tuple[float, Dict[int, float]]:
     losses = []
+    predictions = []
     cls_hits = defaultdict(list)
     for i in range(math.ceil(X_test.shape[0] / batch_size)):
         X_i = X_test[i * batch_size : (i + 1) * batch_size]
         y_i = y_test[i * batch_size : (i + 1) * batch_size]
-        loss, cls_hits = trainer.eval_step((X_i, y_i), cls_hits=cls_hits)
+        loss, cls_hits, logits = trainer.eval_step((X_i, y_i), cls_hits=cls_hits)
         losses.append(loss)
+        predictions.append(logits)
+    predictions = jnp.vstack(predictions)
+    probas = jax.nn.softmax(predictions)
     loss = np.mean(losses)
-    return loss, cls_hits
+    return loss, cls_hits, probas
 
 
 def inference(
@@ -174,10 +178,11 @@ def inference(
             np.savez_compressed(f, reps=reps, classes=y_test, predictions=y_hat)
     else:
         try:
-            loss, cls_hits = trainer.eval_step(
+            loss, cls_hits, logits = trainer.eval_step(
                 (X_test, y_test),
                 cls_hits=defaultdict(list),
             )
+            probas = jax.nn.softmax(logits)
         except (RuntimeError, MemoryError):
             warnings.warn(
                 "\nTest set does not fit into the GPU's memory.\nSplitting test set into small batches to counteract memory problems.\n"
@@ -185,7 +190,7 @@ def inference(
             assert isinstance(
                 batch_size, int
             ), "\nBatch size required to circumvent problems with GPU VRAM.\n"
-            loss, cls_hits = batch_inference(
+            loss, cls_hits, probas = batch_inference(
                 trainer=trainer,
                 X_test=X_test,
                 y_test=y_test,
