@@ -278,8 +278,9 @@ def make_results_df(
     results_current_run["targets"] = data_config.targets
     results_current_run["n_samples"] = data_config.n_samples * data_config.n_classes
     results_current_run["n_frequent_classes"] = data_config.n_frequent_classes
-    results_current_run["min_samples"] = data_config.min_samples
+    results_current_run["min_samples"] = int(data_config.min_samples)
     results_current_run["probability"] = data_config.class_probs
+    results_current_run["initial_lr"] = data_config.initial_lr
     results_current_run["l2_reg"] = model_config.regularization
     results_current_run["convergence_time"] = epoch
     return results_current_run
@@ -333,6 +334,7 @@ def save_results(
             "n_frequent_classes",
             "min_samples",
             "probability",
+            "initial_lr",
             "l2_reg",
             "convergence_time",
         ]
