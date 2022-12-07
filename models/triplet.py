@@ -6,7 +6,6 @@ __all__ = ["TripletHead"]
 from typing import Any
 
 import flax.linen as nn
-import jax
 import jax.numpy as jnp
 from einops import rearrange
 from jax import vmap
@@ -19,7 +18,7 @@ Array = jnp.ndarray
 class TripletHead(nn.Module):
     backbone: str
     num_classes: int
-    k: int = 6
+    k: int
     dtype: Any = jnp.float32
 
     def setup(self):
@@ -39,11 +38,12 @@ class TripletHead(nn.Module):
     def aggregation(
         self, x: Float32[Array, "#batch k d"]
     ) -> Float32[Array, "#batch num_cls"]:
+        """Aggregate logits over all members in a set."""
         dots = vmap(self.query, in_axes=1, out_axes=1)(x)
         # NOTE: scaling/normalizing does not seem to help
         # dots =/ jnp.sqrt(self.num_classes)
-        agg_p = dots.sum(axis=1)
-        return agg_p
+        out = dots.sum(axis=1)
+        return out
 
     @nn.compact
     @jaxtyped
@@ -52,7 +52,9 @@ class TripletHead(nn.Module):
         self, x: Float32[Array, "#batchk d"], train: bool = True
     ) -> Float32[Array, "#batch num_cls"]:
         if train:
-            x = rearrange(x, "(n k) d -> n k d", n=x.shape[0] // self.k, k=self.k)
+            x = rearrange(
+                x, "(n k) d -> n k d", n=x.shape[0] // (self.k + 2), k=self.k + 2
+            )
             out = self.aggregation(x)
         else:
             out = self.query(x)

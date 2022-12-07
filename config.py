@@ -27,8 +27,10 @@ def get_configs(args, **kwargs):
     M = kwargs.pop("n_samples")
     data_config.n_samples = M
     data_config.n_classes = args.n_classes
+    data_config.k = args.k
+    data_config.targets = args.targets
 
-    data_config.ooo_batch_size = kwargs.pop("ooo_batch_size")
+    data_config.oko_batch_size = kwargs.pop("oko_batch_size")
     data_config.main_batch_size = kwargs.pop("main_batch_size")
 
     model_config = config_dict.ConfigDict()

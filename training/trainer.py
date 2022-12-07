@@ -29,7 +29,7 @@ Model = Any
 
 
 @dataclass(init=True, repr=True)
-class OOOTrainer:
+class OKOTrainer:
     model: Model
     model_config: FrozenDict
     data_config: FrozenDict
@@ -43,8 +43,6 @@ class OOOTrainer:
         self.rng = jax.random.PRNGKey(self.rnd_seed)
         # freeze model config dictionary (i.e., make it immutable)
         self.model_config = FrozenDict(self.model_config)
-        # number of elements in tuple
-        self.k = 6
         # inititalize model
         self.init_model()
 
@@ -70,10 +68,12 @@ class OOOTrainer:
             H, W, C = self.data_config.input_dim
 
         def get_init_batch(batch_size: int) -> Array:
-            return random.normal(key_i, shape=(batch_size * self.k , H, W, C))
+            return random.normal(
+                key_i, shape=(batch_size * (self.data_config.k + 2), H, W, C)
+            )
 
         if self.model_config["type"].lower() == "resnet":
-            batch = get_init_batch(self.data_config.ooo_batch_size)
+            batch = get_init_batch(self.data_config.oko_batch_size)
             variables = self.model.init(key_j, batch, train=True)
             init_params, self.init_batch_stats = (
                 variables["params"],
@@ -82,7 +82,7 @@ class OOOTrainer:
             setattr(self, "init_params", init_params)
         else:
             if self.model_config["type"].lower() == "vit":
-                batch = get_init_batch(self.data_config.ooo_batch_size)
+                batch = get_init_batch(self.data_config.oko_batch_size)
                 self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
                 init_params = self.model.init(
                     {"params": init_rng, "dropout": dropout_init_rng},
@@ -91,7 +91,7 @@ class OOOTrainer:
                 )["params"]
                 setattr(self, "init__params", init_params)
             else:
-                batch = get_init_batch(self.data_config.ooo_batch_size)
+                batch = get_init_batch(self.data_config.oko_batch_size)
                 variables = self.model.init(key_j, batch)
                 _, init_params = variables.pop("params")
                 setattr(self, "init_params", init_params)
@@ -109,7 +109,7 @@ class OOOTrainer:
             opt_hypers["nesterov"] = True
 
         # we decrease the learning rate by a factor of 0.1 after 60% and 85% of the training
-        if self.data_config["name"] == 'cifar10':
+        if self.data_config["name"] == "cifar10":
             steps = [0.25, 0.5, 0.75]
         else:
             steps = [0.3, 0.6, 0.9]
@@ -117,7 +117,7 @@ class OOOTrainer:
             int(len(train_batches) * self.optimizer_config.epochs * steps[0]): 0.1,
             int(len(train_batches) * self.optimizer_config.epochs * steps[1]): 0.1,
             int(len(train_batches) * self.optimizer_config.epochs * steps[2]): 0.1,
-        } 
+        }
         lr_schedule = optax.piecewise_constant_schedule(
             init_value=self.optimizer_config.lr,
             boundaries_and_scales=schedule,

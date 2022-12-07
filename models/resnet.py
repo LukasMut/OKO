@@ -80,6 +80,7 @@ class ResNet(nn.Module):
     stage_sizes: Sequence[int]
     block_cls: ModuleDef
     num_classes: int
+    k: int
     num_filters: int = 64
     dtype: Any = jnp.float32
     act: Callable = nn.relu
@@ -90,6 +91,7 @@ class ResNet(nn.Module):
         self.head = TripletHead(
                 backbone="resnet",
                 num_classes=self.num_classes,
+                k=self.k,
         )
     @nn.compact
     def __call__(self, x: Array, train: bool = True) -> Array:

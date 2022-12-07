@@ -9,8 +9,7 @@ import random
 from collections import Counter
 from dataclasses import dataclass
 from functools import partial
-from this import d
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -53,12 +52,12 @@ class DataLoader:
 
         self.num_classes = self.y.shape[-1]
         self.y_prime = jnp.nonzero(self.y)[-1]
-        self.ooo_classes = np.unique(self.y_prime)
+        self.oko_classes = np.unique(self.y_prime)
 
         if self.train:
-            self.k = 6
+            self.set_card = self.data_config["k"]
             self.num_batches = math.ceil(
-                self.data_config.max_triplets / self.data_config.ooo_batch_size
+                self.data_config.max_triplets / self.data_config.oko_batch_size
             )
         else:
 
@@ -80,29 +79,29 @@ class DataLoader:
         self.create_functions()
 
     def create_functions(self) -> None:
-        def sample_double(classes: Array, q: float, key: Array) -> Array:
+        def sample_member(classes: Array, q: float, key: Array) -> Array:
             return jax.random.choice(key, classes, shape=(5,), replace=False, p=q)
 
         @partial(jax.jit, static_argnames=["seed"])
-        def sample_doubles(seed: int, q=None) -> Array:
+        def sample_members(seed: int, q=None) -> Array:
             """Sample pairs of objects from the same class."""
             key = jax.random.PRNGKey(seed)
-            keys = jax.random.split(key, num=self.data_config.ooo_batch_size)
-            return vmap(partial(self.sample_double, q))(keys)
+            keys = jax.random.split(key, num=self.data_config.oko_batch_size)
+            return vmap(partial(self.sample_member, q))(keys)
 
         @jaxtyped
         @typechecker
-        def sample_tuple(
-            y_prime: Int32[Array, "n"], tuple: Int32[np.ndarray, "k"]
+        def sample_set_instances(
+            y_prime: Int32[Array, "n"], set: Int32[np.ndarray, "k"]
         ) -> List[np.int32]:
-            """Uniformly sample instances/indices for the two classes in a tuple without replacement."""
+            """Uniformly sample instances/indices for the two classes in a set without replacement."""
             instances = []
-            for cls in np.unique(tuple):
-                num_examples = np.count_nonzero(tuple == cls)
+            for cls in np.unique(set):
+                num_examples = np.count_nonzero(set == cls)
                 rnd_sample = np.random.choice(
                     np.where(y_prime == cls)[0],
                     size=num_examples,
-                    replace=False,  # sample instances uniformly without replacement
+                    replace=False,  # sample instances uniformly (p = None) without replacement
                     p=None,
                 ).astype(np.int32)
                 instances.extend(rnd_sample)
@@ -124,70 +123,141 @@ class DataLoader:
             y = jnp.stack(y, axis=0)
             return (X, y)
 
+        @partial(jax.jit, static_argnames=["num_cls", "set_card", "k"])
+        def make_bimodal_targets(
+            num_cls: int,
+            set_card: int,
+            k: int,
+            pair_classes: Int32[np.ndarray, "#batch"],
+            oko_classes: Int32[np.ndarray, "#batch"],
+        ) -> Float32[Array, "#batch num_cls"]:
+            y_p = jax.nn.one_hot(x=pair_classes, num_classes=num_cls) * (set_card - k)
+            y_o = jax.nn.one_hot(x=oko_classes, num_classes=num_cls)
+            y = (y_p + y_o) / set_card
+            return y
+
+        @partial(jax.jit, static_argnames=["num_cls", "set_card", "k"])
+        def make_multimodal_targets(
+            num_cls: int,
+            set_card: int,
+            k: int,
+            pair_classes: Int32[np.ndarray, "#batch"],
+            odd_classes: Int32[np.ndarray, "#batch k"],
+        ) -> Float32[Array, "#batch num_cls"]:
+            y = jax.nn.one_hot(x=pair_classes, num_classes=num_cls) * (set_card - k)
+            for classes in odd_classes.T:
+                y += jax.nn.one_hot(x=classes, num_classes=num_cls)
+            y /= set_card
+            return y
+
         # jit or partially initialize functions for computational efficiency
         if self.train:
-            self.sample_double = partial(sample_double, self.ooo_classes)
-            self.sample_doubles = sample_doubles
-            self.sample_tuple = partial(sample_tuple, self.y_prime)
+            self.sample_member = partial(sample_member, self.oko_classes)
+            self.sample_members = sample_members
+            self.sample_set_instances = partial(sample_set_instances, self.y_prime)
+            if self.data_config.targets == "soft":
+                if self.data_config.k == 1:
+                    self._make_bimodal_targets = partial(
+                        make_bimodal_targets,
+                        self.num_classes,
+                        self.set_card,
+                        self.data_config.k,
+                    )
+                else:
+                    self._make_multimodal_targets = partial(
+                        make_multimodal_targets,
+                        self.num_classes,
+                        self.set_card,
+                        self.data_config.k,
+                    )
         else:
             self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
     @staticmethod
     @jaxtyped
     @typechecker
-    def make_tuples(
-        doubles: Int32[Array, "#batch 5"],
+    def make_sets(
+        members: Int32[Array, "#batch _"],
         pair_classes: Int32[np.ndarray, "#batch"],
-        k: int,
-    ) -> Int32[np.ndarray, "#batch k"]:
-        """Make b ordered tuples of k-1 "pair" class instances and one odd-one-out."""
-        if k == 3:
-            tuples = np.c_[doubles, pair_classes]
-        else:
-            # tuples = np.c_[doubles, pair_classes, pair_classes]
-            tuples = np.c_[doubles, pair_classes] #, pair_classes]
-        return tuples
-
-    # @jaxtyped
-    # @typechecker
-    def expand(
-        self, doubles: Int32[Array, "#batch 3"]
-    ) -> Tuple[
-        Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "#batch"], Int32[np.ndarray, "#batch"]]:
-        pair_classes = np.apply_along_axis(np.random.choice, axis=1, arr=doubles)
-        tuples = self.make_tuples(doubles=doubles, pair_classes=pair_classes, k=self.k)
-        tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
-        # multiple odd classes
-        """
-        ooo_classes = np.array(
-            [
-                tuple[np.where(tuple != sim_cls)[0]]
-                for tuple, sim_cls in zip(tuples, pair_classes)
-            ]
-        )
-        
-        # a single odd-one-out class
-        ooo_classes = np.array(
-            [
-                tuple[np.where(tuple != sim_cls)[0][0]]
-                for tuple, sim_cls in zip(tuples, pair_classes)
-            ]
-        )
-        """
-        # NOTE: line below necessary for pairs-only training
-        # tuples = np.c_[pair_classes, pair_classes]
-        # tuples = np.apply_along_axis(np.random.permutation, axis=1, arr=tuples)
-
-        return tuples, pair_classes
-        # return tuples, pair_classes, ooo_classes
+    ) -> Int32[np.ndarray, "#batch card"]:
+        """Make b sets with k+2 members, where k denotes the number of odd classes."""
+        # return np.c_[pair_classes, members, pair_classes]
+        return np.c_[members, pair_classes]
 
     @jaxtyped
     @typechecker
-    def sample_tuples(
-        self, tuples: Int32[np.ndarray, "#batch k"]
+    def get_odd_classes(
+        self,
+        sets: Int32[np.ndarray, "#batch _"],
+        pair_classes: Int32[np.ndarray, "#batch"],
     ) -> Int32[np.ndarray, "#batch k"]:
-        """Sample instances/indices from the corresponding classes."""
-        return np.apply_along_axis(self.sample_tuple, arr=tuples, axis=1)
+        """Find the k odd classes per set."""
+        if self.data_config["k"] == 1:
+            # a single odd class in a set
+            odd_classes = np.array(
+                [
+                    set[np.where(set != sim_cls)[0][0]]
+                    for set, sim_cls in zip(sets, pair_classes)
+                ]
+            )
+        else:
+            # multiple odd classes in a set
+            odd_classes = np.array(
+                [
+                    set[np.where(set != sim_cls)[0]]
+                    for set, sim_cls in zip(sets, pair_classes)
+                ]
+            )
+        return odd_classes
+
+    @staticmethod
+    @jaxtyped
+    @typechecker
+    def choose_pair_classes(
+        members: Int32[Array, "#batch _"]
+    ) -> Int32[np.ndarray, "#batch"]:
+        """Randomly choose a pair class from all k+1 classes in a set with k+1 members (each member represents an instance from a class)."""
+        return np.apply_along_axis(np.random.choice, axis=1, arr=members)
+
+    # @jaxtyped
+    # @typechecker
+    def create_sets(
+        self, members: Int32[Array, "#batch _"]
+    ) -> Union[
+        Tuple[
+            Int32[np.ndarray, "#batch _"],
+            Int32[np.ndarray, "#batch 2"],
+        ],
+        Tuple[
+            Int32[np.ndarray, "#batch _"],
+            Int32[np.ndarray, "#batch 2"],
+            Int32[np.ndarray, "#batch k"],
+        ],
+    ]:
+        pair_classes = self.choose_pair_classes(members)
+        if self.data_config.k > 0:
+            # odd-k-out learning
+            sets = self.make_sets(
+                members=members,
+                pair_classes=pair_classes,
+            )
+            sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
+            if self.data_config["targets"] == "soft":
+                odd_classes = self.get_odd_classes(sets, pair_classes)
+                return sets, pair_classes, odd_classes
+        else:
+            # pair learning (i.e., set cardinality = 2)
+            sets = np.c_[pair_classes, pair_classes]
+            sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
+        return sets, pair_classes
+
+    @jaxtyped
+    @typechecker
+    def sample_batch_instances(
+        self, sets: Int32[np.ndarray, "#batch k"]
+    ) -> Int32[np.ndarray, "#batch k"]:
+        """Sample unique instances/indices from the classes in each set."""
+        return np.apply_along_axis(self.sample_set_instances, arr=sets, axis=1)
 
     @jaxtyped
     @typechecker
@@ -213,52 +283,28 @@ class DataLoader:
 
     @jaxtyped
     @typechecker
-    def _make_bimodal_targets(
-        self,
-        pair_classes: Int32[np.ndarray, "#batch"],
-        ooo_classes: Int32[np.ndarray, "#batch"],
-    ) -> Float32[Array, "#batch num_cls"]:
-        y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes) * (
-            self.k - 1
-        )
-        y_o = jax.nn.one_hot(x=ooo_classes, num_classes=self.num_classes)
-        y = (y_p + y_o) / self.k
-        return y
-
-    # @jaxtyped
-    # @typechecker
-    def _make_multimodal_targets(
-        self,
-        majority_classes: Int32[np.ndarray, "#batch"],
-        odd_classes: Int32[np.ndarray, "#batch 3"],
-    ) -> Float32[Array, "#batch num_cls"]:
-        y = jax.nn.one_hot(x=majority_classes, num_classes=self.num_classes) * (
-            self.k - odd_classes.shape[1]
-        )
-        for classes in odd_classes.T:
-            y += jax.nn.one_hot(x=classes, num_classes=self.num_classes)
-        y /= self.k
-        return y
-
-    @jaxtyped
-    @typechecker
-    def sample_ooo_batch(
+    def sample_oko_batch(
         self, q=None
     ) -> Tuple[UInt8orFP32[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         seed = np.random.randint(low=0, high=1e9, size=1)[0]
-        doubles_subset = self.sample_doubles(seed, q=q)
-        # NOTE: two lines below are used to create "hard" targets with a point mass at the pair class
-        tuple_subset, pair_classes = self.expand(doubles_subset)
-        y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
-        
-        # NOTE: two lines below are used to create soft-targets with a multi-modal distribution (pair and odd class(es))
-        # tuple_subset, pair_classes, ooo_classes = self.expand(doubles_subset)
-        # y = self._make_bimodal_targets(pair_classes, ooo_classes)
-        # y = self._make_multimodal_targets(pair_classes, ooo_classes)
-        tuple_subset = self.sample_tuples(tuple_subset)
-        tuple_subset = tuple_subset.ravel()
-        X = self.X[tuple_subset]
+        set_members = self.sample_members(seed, q=q)
+
+        if self.data_config["targets"] == "soft":
+            # create soft targets that reflect the true probability distribution of classes in a set
+            sets, pair_classes, odd_classes = self.create_sets(set_members)
+            if self.data_config.k == 1:
+                y = self._make_bimodal_targets(pair_classes, odd_classes)
+            else:
+                y = self._make_multimodal_targets(pair_classes, odd_classes)
+        else:
+            # create "hard" targets with a point mass at the pair class
+            sets, pair_classes = self.create_sets(set_members)
+            y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
+
+        batch_sets = self.sample_batch_instances(sets)
+        batch_sets = batch_sets.ravel()
+        X = self.X[batch_sets]
         X = jax.device_put(X)
         return (X, y)
 
@@ -271,7 +317,7 @@ class DataLoader:
 
     @jaxtyped
     @typechecker
-    def ooo_batch_balancing(
+    def oko_batch_balancing(
         self,
     ) -> Iterator[
         Tuple[UInt8orFP32[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]
@@ -279,14 +325,14 @@ class DataLoader:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
         q = self.smoothing() if self.data_config.sampling == "dynamic" else None
         for _ in range(self.num_batches):
-            ooo_batch = self.sample_ooo_batch(q)
-            yield ooo_batch
+            oko_batch = self.sample_oko_batch(q)
+            yield oko_batch
         if self.data_config.sampling == "dynamic":
             self.temperature += 0.1
 
     def __iter__(self) -> Iterator:
         if self.train:
-            return iter(self.ooo_batch_balancing())
+            return iter(self.oko_batch_balancing())
         return iter(self.stepping())
 
     def __len__(self) -> int:

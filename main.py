@@ -38,8 +38,14 @@ def parseargs():
         help='average number of samples per class')
     aa('--n_classes', type=int,
         help='number of classes in dataset')
-    aa('--ooo_batch_sizes', type=int, nargs='+',
-        help='number of triplets per mini-batch (i.e., number of subsamples x 3')
+    aa('--k', type=int, default=1,
+        choices=list(range(10)),
+        help='number of odd classes in a set of k+2 examples with 2 examples coming from the same class')
+    aa('--targets', type=str, default="hard",
+        choices=["hard", "soft"],
+        help="whether to use hard targets with a point mass at the pair class or soft targets that reflect the true class distribution in a set")
+    aa('--oko_batch_sizes', type=int, nargs='+',
+        help='number of sets per mini-batch (i.e., number of subsamples x 3')
     aa('--main_batch_sizes', type=int, nargs='+',
         help='number of triplets per mini-batch (i.e., number of subsamples x 3')
     aa('--max_triplets', type=int, nargs='+',
@@ -82,10 +88,10 @@ if __name__ == "__main__":
     # parse arguments
     args = parseargs()
     # get current combination of settings
-    (n_samples, epochs, ooo_batch_size, main_batch_size, eta, max_triplets), p_mass, rnd_seed = train.get_combination(
+    (n_samples, epochs, oko_batch_size, main_batch_size, eta, max_triplets), p_mass, rnd_seed = train.get_combination(
         samples=args.samples,
         epochs=args.epochs,
-        ooo_batch_sizes=args.ooo_batch_sizes,
+        oko_batch_sizes=args.oko_batch_sizes,
         main_batch_sizes=args.main_batch_sizes,
         learning_rates=args.etas,
         max_triplets=args.max_triplets,
@@ -113,7 +119,7 @@ if __name__ == "__main__":
         n_samples=n_samples,
         input_dim=input_dim,
         epochs=epochs, 
-        ooo_batch_size=ooo_batch_size,
+        oko_batch_size=oko_batch_size,
         main_batch_size=main_batch_size,
         max_triplets=max_triplets,
         p_mass=p_mass,

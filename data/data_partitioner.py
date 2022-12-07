@@ -226,7 +226,7 @@ class DataPartitioner:
             print(f"\n...Creating output directory: {out_path}\n")
             os.makedirs(out_path, exist_ok=True)
         try:
-            os.remove(os.path.join(out_path, f"ooo_dataset_{self.dataset}.hdf5"))
+            os.remove(os.path.join(out_path, f"oko_dataset_{self.dataset}.hdf5"))
         except FileNotFoundError:
             print("\nThere is no file to be removed.\n")
         return out_path

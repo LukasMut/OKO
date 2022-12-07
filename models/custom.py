@@ -61,8 +61,9 @@ class CNN(nn.Module):
 
 class Custom(nn.Module):
     encoder_widths: Sequence[int]
-    source: str
     num_classes: int
+    k: int
+    source: str
     capture_intermediates: bool = False
 
     def setup(self):
@@ -74,6 +75,7 @@ class Custom(nn.Module):
         self.head = TripletHead(
             backbone="custom",
             num_classes=self.num_classes,
+            k=self.k,
         )
 
     @nn.compact

@@ -6,7 +6,7 @@ import math
 import os
 import warnings
 from collections import Counter, defaultdict
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import flax
 import jax
@@ -17,7 +17,7 @@ from ml_collections import config_dict
 
 import models
 from data import DataLoader
-from training import OOOTrainer
+from training import OKOTrainer
 
 Array = np.ndarray
 Array = jnp.ndarray
@@ -27,7 +27,7 @@ FrozenDict = config_dict.FrozenConfigDict
 def get_combination(
     samples: List[int],
     epochs: List[int],
-    ooo_batch_sizes: List[int],
+    oko_batch_sizes: List[int],
     main_batch_sizes: List[int],
     learning_rates: List[float],
     max_triplets: List[int],
@@ -41,7 +41,7 @@ def get_combination(
                 zip(
                     samples,
                     epochs,
-                    ooo_batch_sizes,
+                    oko_batch_sizes,
                     main_batch_sizes,
                     learning_rates,
                     max_triplets,
@@ -52,7 +52,7 @@ def get_combination(
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"
-    return combs[int(os.environ["SGE_TASK_ID"])]
+    return combs[1]  # combs[int(os.environ["SGE_TASK_ID"])]
 
 
 def make_path(
@@ -103,7 +103,7 @@ def run(
     rnd_seed: int,
     inference: bool = False,
 ) -> tuple:
-    trainer = OOOTrainer(
+    trainer = OKOTrainer(
         model=model,
         model_config=model_config,
         data_config=data_config,
@@ -340,7 +340,7 @@ def save_results(
         results_current_run.to_pickle(os.path.join(out_path, "results.pkl"))
 
 
-def create_model(*, model_cls, model_config):
+def create_model(*, model_cls, model_config, data_config) -> Any:
     platform = jax.local_devices()[0].platform
     if model_config.half_precision:
         if platform == "tpu":
@@ -351,6 +351,7 @@ def create_model(*, model_cls, model_config):
         model_dtype = jnp.float32
     model = model_cls(
         num_classes=model_config.n_classes,
+        k=data_config.k,
         dtype=model_dtype,
     )
     return model
@@ -361,7 +362,9 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
     model_name = model_config.type + model_config.depth
     net = getattr(models, model_name)
     if model_config.type.lower() == "resnet":
-        model = create_model(model_cls=net, model_config=model_config)
+        model = create_model(
+            model_cls=net, model_config=model_config, data_config=data_config
+        )
     elif model_config.type.lower() == "vit":
         model = net(
             embed_dim=256,
@@ -372,6 +375,7 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
             num_channels=3,
             num_patches=64,
             num_classes=model_config.n_classes,
+            k=data_config.k,
             dropout_prob=0.2,
             capture_intermediates=False,
         )
@@ -387,6 +391,7 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
         model = net(
             encoder_widths=encoder_widths,
             num_classes=model_config.n_classes,
+            k=data_config.k,
             source=data_config.name,
             capture_intermediates=False,
         )
