@@ -21,7 +21,7 @@ from flax.training.early_stopping import EarlyStopping
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
-import training.utils as utils
+import training.loss_funs as loss_funs
 from training.train_state import TrainState
 
 Array = jnp.ndarray
@@ -146,14 +146,14 @@ class OKOTrainer:
     def create_functions(self) -> None:
         def apply_l2_reg(state: Any, lmbda: float) -> Tuple[Any, Array]:
             weight_penalty, grads = jax.value_and_grad(
-                utils.l2_reg, argnums=0, has_aux=False
+                loss_funs.l2_reg, argnums=0, has_aux=False
             )(state.params, lmbda)
             state = state.apply_gradients(grads=grads)
             return state, weight_penalty
 
         def init_loss_fn(model_config: FrozenDict, state: Any) -> Callable:
             loss_fn = partial(
-                getattr(utils, f"loss_fn_{model_config['type'].lower()}"), state
+                getattr(loss_funs, f"loss_fn_{model_config['type'].lower()}"), state
             )
             return loss_fn
 
@@ -204,21 +204,21 @@ class OKOTrainer:
 
         def inference(model_config, state, X: Array, rng=None) -> Array:
             if model_config["type"].lower() == "custom":
-                logits = utils.cnn_predict(
+                logits = loss_funs.cnn_predict(
                     state=state,
                     params=state.params,
                     X=X,
                     train=False,
                 )
             elif model_config["type"].lower() == "resnet":
-                logits = utils.resnet_predict(
+                logits = loss_funs.resnet_predict(
                     state=state,
                     params=state.params,
                     X=X,
                     train=False,
                 )
             elif model_config["type"].lower() == "vit":
-                logits, _ = utils.vit_predict(
+                logits, _ = loss_funs.vit_predict(
                     state=state,
                     params=state.params,
                     rng=rng,
@@ -236,7 +236,7 @@ class OKOTrainer:
         X, y = batch
         logits = self.inference(self.state, X=X, rng=self.rng)
         loss = optax.softmax_cross_entropy(logits, y).mean()
-        batch_hits = utils.class_hits(logits, y)
+        batch_hits = loss_funs.class_hits(logits, y)
         acc = self.collect_hits(cls_hits=cls_hits, batch_hits=batch_hits)
         return loss.item(), acc, logits
 
@@ -245,7 +245,7 @@ class OKOTrainer:
     ) -> Array:
         logits = aux[0] if isinstance(aux, tuple) else aux
         _, y = batch
-        batch_hits = utils.class_hits(logits, y)
+        batch_hits = loss_funs.class_hits(logits, y)
         acc = self.collect_hits(
             cls_hits=cls_hits,
             batch_hits=batch_hits,
@@ -316,9 +316,9 @@ class OKOTrainer:
                 self.save_model(epoch=epoch)
 
                 """
-                intermediate_performance = utils.merge_metrics(
+                intermediate_performance = loss_funs.merge_metrics(
                     (self.train_metrics, self.test_metrics))
-                utils.save_metrics(out_path=os.path.join(
+                loss_funs.save_metrics(out_path=os.path.join(
                     self.out_path, 'metrics'), metrics=intermediate_performance, epoch=f'{epoch+1:04d}')
                 """
 
