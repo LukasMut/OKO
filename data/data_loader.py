@@ -344,8 +344,7 @@ class DataLoader:
 
         batch_sets = self.sample_batch_instances(sets)
         batch_sets = batch_sets.ravel()
-        X = self.X[batch_sets]
-        X = jax.device_put(X)
+        X = jax.device_put(self.X[batch_sets])
         X = self.apply_augmentations(X)
         return (X, y)
 
