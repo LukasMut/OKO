@@ -30,7 +30,7 @@ def get_combination(
     oko_batch_sizes: List[int],
     main_batch_sizes: List[int],
     learning_rates: List[float],
-    max_triplets: List[int],
+    num_sets: List[int],
     probability_masses: List[float],
     seeds: List[int],
 ):
@@ -44,7 +44,7 @@ def get_combination(
                     oko_batch_sizes,
                     main_batch_sizes,
                     learning_rates,
-                    max_triplets,
+                    num_sets,
                 ),
                 probability_masses,
                 seeds,
@@ -67,6 +67,9 @@ def make_path(
         model_config.task,
         model_config.type + model_config.depth,
         f"{data_config.n_samples}_samples",
+        str(data_config.k),
+        str(data_config.num_sets),
+        data_config.targets,
         f"seed{rnd_seed:02d}",
     )
     return path

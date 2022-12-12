@@ -57,7 +57,7 @@ class DataLoader:
         if self.train:
             self.set_card = self.data_config.k + 2
             self.num_batches = math.ceil(
-                self.data_config.max_triplets / self.data_config.oko_batch_size
+                self.data_config.num_sets / self.data_config.oko_batch_size
             )
         else:
 
@@ -79,8 +79,12 @@ class DataLoader:
         self.create_functions()
 
     def create_functions(self) -> None:
-        def sample_member(classes: Array, num_set_classes: int, q: float, key: Array) -> Array:
-            return jax.random.choice(key, classes, shape=(num_set_classes,), replace=False, p=q)
+        def sample_member(
+            classes: Array, num_set_classes: int, q: float, key: Array
+        ) -> Array:
+            return jax.random.choice(
+                key, classes, shape=(num_set_classes,), replace=False, p=q
+            )
 
         @partial(jax.jit, static_argnames=["seed"])
         def sample_members(seed: int, q=None) -> Array:
@@ -152,7 +156,9 @@ class DataLoader:
 
         # jit or partially initialize functions for computational efficiency
         if self.train:
-            self.sample_member = partial(sample_member, self.oko_classes, self.set_card-1)
+            self.sample_member = partial(
+                sample_member, self.oko_classes, self.set_card - 1
+            )
             self.sample_members = sample_members
             self.sample_set_instances = partial(sample_set_instances, self.y_prime)
             if self.data_config.targets == "soft":

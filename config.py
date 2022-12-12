@@ -20,7 +20,7 @@ def get_configs(args, **kwargs):
     # whether to balance mini-batches
     data_config.sampling = args.sampling
     # maximum number of triplets
-    data_config.max_triplets = kwargs.pop("max_triplets")
+    data_config.num_sets = kwargs.pop("num_sets")
     # input dimensionality
     data_config.input_dim = kwargs.pop("input_dim")
     # average number of instances per class

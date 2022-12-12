@@ -48,7 +48,7 @@ def parseargs():
         help='number of sets per mini-batch (i.e., number of subsamples x 3')
     aa('--main_batch_sizes', type=int, nargs='+',
         help='number of triplets per mini-batch (i.e., number of subsamples x 3')
-    aa('--max_triplets', type=int, nargs='+',
+    aa('--num_sets', type=int, nargs='+',
         help='maximum number of triplets during each epoch')
     aa('--probability_masses', type=float, nargs='+',
         help='probability mass that will be equally distributed among the k most frequent classes')
@@ -88,13 +88,13 @@ if __name__ == "__main__":
     # parse arguments
     args = parseargs()
     # get current combination of settings
-    (n_samples, epochs, oko_batch_size, main_batch_size, eta, max_triplets), p_mass, rnd_seed = train.get_combination(
+    (n_samples, epochs, oko_batch_size, main_batch_size, eta, num_sets), p_mass, rnd_seed = train.get_combination(
         samples=args.samples,
         epochs=args.epochs,
         oko_batch_sizes=args.oko_batch_sizes,
         main_batch_sizes=args.main_batch_sizes,
         learning_rates=args.etas,
-        max_triplets=args.max_triplets,
+        num_sets=args.num_sets,
         probability_masses=args.probability_masses,
         seeds=args.seeds,
         )
@@ -121,7 +121,7 @@ if __name__ == "__main__":
         epochs=epochs, 
         oko_batch_size=oko_batch_size,
         main_batch_size=main_batch_size,
-        max_triplets=max_triplets,
+        num_sets=num_sets,
         p_mass=p_mass,
         eta=eta,
         )
