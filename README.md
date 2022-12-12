@@ -13,7 +13,7 @@ python main.py --out_path /path/to/results \
 --targets soft \
 --oko_batch_sizes 64 \
 --main_batch_sizes 8 \
---max_triplets 3000 \
+--num_sets 3000 \
 --epochs 50 \
 --etas 0.001 \
 --optim sgd \
