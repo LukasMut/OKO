@@ -188,11 +188,11 @@ class DataLoader:
         self.flip_left_right = jax.jit(pix.random_flip_left_right)
         self.augmentations = [self.flip_left_right]
 
-        if self.data.config.name.lower() == "fashionmnist":
+        if self.data_config.name.lower() == "fashionmnist":
             self.flip_up_down = jax.jit(pix.random_flip_up_down)
             self.augmentations.append(self.flip_up_down)
 
-        if self.data.config.name.lower().startswith("cifar"):
+        if self.data_config.name.lower().startswith("cifar"):
             self.flip_up_down = jax.jit(pix.random_flip_up_down)
             self.rotate = jax.jit(pix.rot90)
             self.augmentations.append(self.flip_up_down)
