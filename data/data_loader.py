@@ -35,7 +35,6 @@ class DataLoader:
     model_config: FrozenDict
     seed: int
     train: bool = True
-    class_subset: List[int] = None
 
     def __post_init__(self) -> None:
         self.cpu_devices = jax.devices("cpu")
@@ -63,12 +62,10 @@ class DataLoader:
                 self.data_config.num_sets / self.data_config.oko_batch_size
             )
         else:
-
-            self.dataset = list(zip(self.X, self.y))
             self.num_batches = math.ceil(
-                len(self.dataset) / self.data_config.main_batch_size
+                self.X.shape[0] / self.data_config.main_batch_size
             )
-            self.remainder = len(self.dataset) % self.data_config.main_batch_size
+            self.remainder = self.X.shape[0] % self.data_config.main_batch_size
 
         if self.data_config.sampling == "dynamic":
             self.y_flat = np.nonzero(self.y)[1]
@@ -113,22 +110,6 @@ class DataLoader:
                 ).astype(np.int32)
                 instances.extend(rnd_sample)
             return instances
-
-        @jaxtyped
-        @typechecker
-        def unzip_pairs(
-            dataset: List[
-                Tuple[UInt8orFP32[Array, "h w c"], Float32[Array, "num_cls"]]
-            ],
-            subset: range,
-        ) -> Tuple[
-            UInt8orFP32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]
-        ]:
-            """Create tuples of data pairs (X, y)."""
-            X, y = zip(*[dataset[i] for i in subset])
-            X = jnp.stack(X, axis=0)
-            y = jnp.stack(y, axis=0)
-            return (X, y)
 
         @partial(jax.jit, static_argnames=["num_cls", "set_card", "k"])
         def make_bimodal_targets(
@@ -179,12 +160,10 @@ class DataLoader:
                         self.set_card,
                         self.data_config.k,
                     )
-        else:
-            self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
-        self.make_augmentations()
+        self._make_augmentations()
 
-    def make_augmentations(self) -> None:
+    def _make_augmentations(self) -> None:
         self.flip_left_right = jax.jit(pix.random_flip_left_right)
         self.augmentations = [self.flip_left_right]
 
@@ -309,16 +288,17 @@ class DataLoader:
         """Step over the entire training data in mini-batches of size B."""
         for i in range(self.num_batches):
             if self.remainder != 0 and i == int(self.num_batches - 1):
-                subset = range(
+                subset = list(range(
                     i * self.data_config.main_batch_size,
                     i * self.data_config.main_batch_size + self.remainder,
-                )
+                ))
             else:
-                subset = range(
+                subset = list(range(
                     i * self.data_config.main_batch_size,
                     (i + 1) * self.data_config.main_batch_size,
-                )
-            X, y = self.unzip_pairs(subset)
+                ))
+            X = self.X[subset]
+            y = self.y[subset]
             yield (X, y)
 
     @jaxtyped
@@ -345,7 +325,7 @@ class DataLoader:
         batch_sets = self.sample_batch_instances(sets)
         batch_sets = batch_sets.ravel()
         X = jax.device_put(self.X[batch_sets])
-        X = self.apply_augmentations(X)
+        # X = self.apply_augmentations(X)
         return (X, y)
 
     def smoothing(self) -> Array:
