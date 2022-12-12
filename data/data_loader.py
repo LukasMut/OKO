@@ -297,8 +297,8 @@ class DataLoader:
                     i * self.data_config.main_batch_size,
                     (i + 1) * self.data_config.main_batch_size,
                 ))
-            X = self.X[subset]
-            y = self.y[subset]
+            X = self.X[np.asarray(subset)]
+            y = self.y[np.asarray(subset)]
             yield (X, y)
 
     @jaxtyped
