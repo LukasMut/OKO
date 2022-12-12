@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Iterator, List, Tuple, Union
 
-import haiku as hk
 import dm_pix as pix
+import haiku as hk
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -183,16 +183,16 @@ class DataLoader:
             self.unzip_pairs = partial(unzip_pairs, self.dataset)
 
         self.make_augmentations()
-    
+
     def make_augmentations(self) -> None:
         self.flip_left_right = jax.jit(pix.random_flip_left_right)
         self.augmentations = [self.flip_left_right]
-        
-        if self.data.config.name.lower() == 'fashionmnist':
+
+        if self.data.config.name.lower() == "fashionmnist":
             self.flip_up_down = jax.jit(pix.random_flip_up_down)
             self.augmentations.append(self.flip_up_down)
-        
-        if self.data.config.name.lower().startswith('cifar'):
+
+        if self.data.config.name.lower().startswith("cifar"):
             self.flip_up_down = jax.jit(pix.random_flip_up_down)
             self.rotate = jax.jit(pix.rot90)
             self.augmentations.append(self.flip_up_down)
@@ -204,8 +204,11 @@ class DataLoader:
         self, batch: UInt8orFP32[Array, "#batchk h w c"]
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         for i, augmentation in enumerate(self.augmentations):
-            if self.data_config.name.startwith("cifar") and i == len(self.make_augmentations) - 1:
-                    batch = augmentation(image=batch)
+            if (
+                self.data_config.name.startwith("cifar")
+                and i == len(self.augmentations) - 1
+            ):
+                batch = augmentation(image=batch)
             else:
                 batch = augmentation(key=next(self.rng_seq), image=batch)
         return batch
