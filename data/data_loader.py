@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Iterator, List, Tuple, Union
 
+import haiku as hk
+import dm_pix as pix
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -46,6 +48,7 @@ class DataLoader:
         # seed random number generator
         np.random.seed(self.seed)
         random.seed(self.seed)
+        self.rng_seq = hk.PRNGSequence(self.seed)
 
         if self.data_config.name.endswith("mnist"):
             self.X = jnp.expand_dims(self.X, axis=-1)
@@ -178,6 +181,34 @@ class DataLoader:
                     )
         else:
             self.unzip_pairs = partial(unzip_pairs, self.dataset)
+
+        self.make_augmentations()
+    
+    def make_augmentations(self) -> None:
+        self.flip_left_right = jax.jit(pix.random_flip_left_right)
+        self.augmentations = [self.flip_left_right]
+        
+        if self.data.config.name.lower() == 'fashionmnist':
+            self.flip_up_down = jax.jit(pix.random_flip_up_down)
+            self.augmentations.append(self.flip_up_down)
+        
+        if self.data.config.name.lower().startswith('cifar'):
+            self.flip_up_down = jax.jit(pix.random_flip_up_down)
+            self.rotate = jax.jit(pix.rot90)
+            self.augmentations.append(self.flip_up_down)
+            self.augmentations.append(self.rotate)
+
+    @jaxtyped
+    @typechecker
+    def apply_augmentations(
+        self, batch: UInt8orFP32[Array, "#batchk h w c"]
+    ) -> UInt8orFP32[Array, "#batchk h w c"]:
+        for i, augmentation in enumerate(self.augmentations):
+            if self.data_config.name.startwith("cifar") and i == len(self.make_augmentations) - 1:
+                    batch = augmentation(image=batch)
+            else:
+                batch = augmentation(key=next(self.rng_seq), image=batch)
+        return batch
 
     @staticmethod
     @jaxtyped
@@ -312,6 +343,7 @@ class DataLoader:
         batch_sets = batch_sets.ravel()
         X = self.X[batch_sets]
         X = jax.device_put(X)
+        X = self.apply_augmentations(X)
         return (X, y)
 
     def smoothing(self) -> Array:
