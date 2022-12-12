@@ -205,7 +205,7 @@ class DataLoader:
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         for i, augmentation in enumerate(self.augmentations):
             if (
-                self.data_config.name.startwith("cifar")
+                self.data_config.name.startswith("cifar")
                 and i == len(self.augmentations) - 1
             ):
                 batch = augmentation(image=batch)
