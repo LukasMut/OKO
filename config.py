@@ -29,6 +29,7 @@ def get_configs(args, **kwargs):
     data_config.n_classes = args.n_classes
     data_config.k = args.k
     data_config.targets = args.targets
+    data_config.apply_augmentations = args.apply_augmentations
 
     data_config.oko_batch_size = kwargs.pop("oko_batch_size")
     data_config.main_batch_size = kwargs.pop("main_batch_size")

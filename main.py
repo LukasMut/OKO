@@ -74,6 +74,8 @@ def parseargs():
         help='whether class prior probability at test time should be uniform or similar to training')
     aa('--regularization', action='store_true',
         help='apply l2 regularization during training')
+    aa('--apply_augmentations', action='store_true',
+        help='apply augmentations during training')
     aa('--inference', action='store_true',
         help='whether to perform inference without stepping over the data')
     aa('--collect_reps', action='store_true',

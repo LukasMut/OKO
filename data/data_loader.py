@@ -288,15 +288,19 @@ class DataLoader:
         """Step over the entire training data in mini-batches of size B."""
         for i in range(self.num_batches):
             if self.remainder != 0 and i == int(self.num_batches - 1):
-                subset = list(range(
-                    i * self.data_config.main_batch_size,
-                    i * self.data_config.main_batch_size + self.remainder,
-                ))
+                subset = list(
+                    range(
+                        i * self.data_config.main_batch_size,
+                        i * self.data_config.main_batch_size + self.remainder,
+                    )
+                )
             else:
-                subset = list(range(
-                    i * self.data_config.main_batch_size,
-                    (i + 1) * self.data_config.main_batch_size,
-                ))
+                subset = list(
+                    range(
+                        i * self.data_config.main_batch_size,
+                        (i + 1) * self.data_config.main_batch_size,
+                    )
+                )
             X = self.X[np.asarray(subset)]
             y = self.y[np.asarray(subset)]
             yield (X, y)
@@ -325,7 +329,8 @@ class DataLoader:
         batch_sets = self.sample_batch_instances(sets)
         batch_sets = batch_sets.ravel()
         X = jax.device_put(self.X[batch_sets])
-        # X = self.apply_augmentations(X)
+        if self.data_config.apply_augmentations:
+            X = self.apply_augmentations(X)
         return (X, y)
 
     def smoothing(self) -> Array:
