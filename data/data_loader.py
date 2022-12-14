@@ -174,7 +174,7 @@ class DataLoader:
             self.augmentations = [self.flip_left_right, self.flip_up_down]
 
         elif self.data_config.name.lower().startswith("cifar"):
-            self.rnd_crop = jax.jit(pix.random_crop)
+            self.rnd_crop = pix.random_crop
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
             self.augmentations = [self.rnd_crop, self.flip_left_right]
             
@@ -189,7 +189,7 @@ class DataLoader:
                 self.data_config.name.startswith("cifar")
                 and i == 0
             ):
-                batch = augmentation(key=next(self.rng_seq), image=batch, crop_sizes=[batch.shape[1]])
+                batch = augmentation(key=next(self.rng_seq), image=batch, crop_sizes=batch.shape)
             else:
                 batch = augmentation(key=next(self.rng_seq), image=batch)
         return batch

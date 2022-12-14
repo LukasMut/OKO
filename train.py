@@ -14,6 +14,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 from ml_collections import config_dict
+from sklearn.metrics import roc_auc_score
 
 import models
 from data import DataLoader
@@ -202,7 +203,10 @@ def inference(
                 batch_size=batch_size,
             )
     acc = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
-    test_performance = flax.core.FrozenDict({"loss": loss, "accuracy": acc})
+    auc = roc_auc_score(
+        y_true=np.asarray(y_test), y_score=np.asarray(probas), average="macro"
+    )
+    test_performance = flax.core.FrozenDict({"loss": loss, "auc": auc, "accuracy": acc})
     train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
     cls_distribution = dict(Counter(train_labels.tolist()))
 
@@ -277,6 +281,7 @@ def make_results_df(
         performance_rare_classes
     )
     results_current_run["cross-entropy"] = performance["loss"]
+    results_current_run["auc"] = performance["auc"]
     results_current_run["training"] = model_config.task
     results_current_run["sampling"] = data_config.sampling
     results_current_run["weighting"] = False
@@ -332,6 +337,7 @@ def save_results(
             "avg-performance-frequent-classes",
             "avg-performance-rare-classes",
             "cross-entropy",
+            "auc",
             "training",
             "sampling",
             "weighting",
