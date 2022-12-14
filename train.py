@@ -34,6 +34,7 @@ def get_combination(
     num_sets: List[int],
     probability_masses: List[float],
     num_odds: List[int],
+    sampling_policies: List[str],
     seeds: List[int],
 ):
     combs = [None]
@@ -50,6 +51,7 @@ def get_combination(
                 ),
                 probability_masses,
                 num_odds,
+                sampling_policies,
                 seeds,
             )
         )
@@ -69,6 +71,7 @@ def make_path(
         data_config.name,
         model_config.task,
         model_config.type + model_config.depth,
+        data_config.sampling,
         f"{data_config.n_samples}_samples",
         str(data_config.k),
         str(data_config.num_sets),

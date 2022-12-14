@@ -18,7 +18,7 @@ def get_configs(args, **kwargs):
     # number of classes that occur frequently in the data
     data_config.n_frequent_classes = 3
     # whether to balance mini-batches
-    data_config.sampling = args.sampling
+    data_config.sampling = kwargs.pop("sampling")
     # maximum number of triplets
     data_config.num_sets = kwargs.pop("num_sets")
     # input dimensionality

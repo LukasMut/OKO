@@ -64,14 +64,11 @@ def parseargs():
         help='Number of steps of no improvement before stopping training')
     aa('--steps', type=int,
         help='save intermediate parameters every <steps> epochs')
-    aa('--sampling', type=str, default='uniform',
+    aa('--sampling', type=str, default='uniform', nargs="+",
         choices=['uniform', 'dynamic'],
         help='how to sample mini-batches per iteration')
     aa('--min_samples', type=int, default=None,
         help='minimum number of samples per class')
-    aa('--testing', type=str, default='uniform',
-        choices=['uniform', 'heterogeneous'],
-        help='whether class prior probability at test time should be uniform or similar to training')
     aa('--regularization', action='store_true',
         help='apply l2 regularization during training')
     aa('--apply_augmentations', action='store_true',
@@ -90,7 +87,7 @@ if __name__ == "__main__":
     # parse arguments
     args = parseargs()
     # get current combination of settings
-    (n_samples, epochs, oko_batch_size, main_batch_size, eta, num_sets), p_mass, num_odds, rnd_seed = train.get_combination(
+    (n_samples, epochs, oko_batch_size, main_batch_size, eta, num_sets), p_mass, num_odds, sampling, rnd_seed = train.get_combination(
         samples=args.samples,
         epochs=args.epochs,
         oko_batch_sizes=args.oko_batch_sizes,
@@ -99,6 +96,7 @@ if __name__ == "__main__":
         num_sets=args.num_sets,
         probability_masses=args.probability_masses,
         num_odds=args.k,
+        sampling_policies=args.sampling,
         seeds=args.seeds,
         )
 
@@ -128,6 +126,7 @@ if __name__ == "__main__":
         p_mass=p_mass,
         num_odds=num_odds,
         eta=eta,
+        sampling=sampling,
         )
 
     model = train.get_model(
