@@ -40,7 +40,7 @@ class DataLoader:
         self.cpu_devices = jax.devices("cpu")
         num_gpus = 2
         self.device_num = random.choices(range(num_gpus))[0]
-        self.X = self.data[0]
+        self.X = np.asarray(self.data[0])
         self.y = copy.deepcopy(self.data[1])
         self.y = jax.device_put(self.y)
 
@@ -50,7 +50,7 @@ class DataLoader:
         self.rng_seq = hk.PRNGSequence(self.seed)
 
         if self.data_config.name.endswith("mnist"):
-            self.X = jnp.expand_dims(self.X, axis=-1)
+            self.X = np.expand_dims(self.X, axis=-1)
 
         self.num_classes = self.y.shape[-1]
         self.y_prime = jnp.nonzero(self.y)[-1]
@@ -173,9 +173,10 @@ class DataLoader:
 
         if self.data_config.name.lower().startswith("cifar"):
             self.flip_up_down = jax.jit(pix.random_flip_up_down)
-            self.rotate = jax.jit(pix.rot90)
+            self.rnd_crop = jax.jit(pix.random_crop)
             self.augmentations.append(self.flip_up_down)
-            self.augmentations.append(self.rotate)
+            self.augmentations.append(self.rnd_crop)
+            
 
     @jaxtyped
     @typechecker
@@ -187,7 +188,7 @@ class DataLoader:
                 self.data_config.name.startswith("cifar")
                 and i == len(self.augmentations) - 1
             ):
-                batch = augmentation(image=batch)
+                batch = augmentation(key=next(self.rng_seq), image=batch, crop_size=[batch.shape[1]])
             else:
                 batch = augmentation(key=next(self.rng_seq), image=batch)
         return batch
