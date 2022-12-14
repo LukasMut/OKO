@@ -164,16 +164,19 @@ class DataLoader:
         self._make_augmentations()
 
     def _make_augmentations(self) -> None:
-        self.flip_left_right = jax.jit(pix.random_flip_left_right)
-        self.augmentations = [self.flip_left_right]
+        if  self.data_config.name.lower() == "mnist":
+            self.flip_left_right = jax.jit(pix.random_flip_left_right)
+            self.augmentations = [self.flip_left_right]
 
-        if self.data_config.name.lower() == "fashionmnist":
+        elif self.data_config.name.lower() == "fashionmnist":
+            self.flip_left_right = jax.jit(pix.random_flip_left_right)
             self.flip_up_down = jax.jit(pix.random_flip_up_down)
-            self.augmentations.append(self.flip_up_down)
+            self.augmentations = [self.flip_left_right, self.flip_up_down]
 
-        if self.data_config.name.lower().startswith("cifar"):
+        elif self.data_config.name.lower().startswith("cifar"):
             self.rnd_crop = jax.jit(pix.random_crop)
-            self.augmentations.append(self.rnd_crop)
+            self.flip_left_right = jax.jit(pix.random_flip_left_right)
+            self.augmentations = [self.rnd_crop, self.flip_left_right]
             
 
     @jaxtyped
@@ -184,9 +187,9 @@ class DataLoader:
         for i, augmentation in enumerate(self.augmentations):
             if (
                 self.data_config.name.startswith("cifar")
-                and i == len(self.augmentations) - 1
+                and i == 0
             ):
-                batch = augmentation(key=next(self.rng_seq), image=batch, crop_size=[batch.shape[1]])
+                batch = augmentation(key=next(self.rng_seq), image=batch, crop_sizes=[batch.shape[1]])
             else:
                 batch = augmentation(key=next(self.rng_seq), image=batch)
         return batch
