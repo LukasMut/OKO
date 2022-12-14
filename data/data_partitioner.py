@@ -75,8 +75,8 @@ class DataPartitioner:
         """Get means and STDs of training data for CIFAR-10/CIFAR-100."""
         if dataset == "cifar10":
             means = [0.4914, 0.4822, 0.4465]
-            stds = [0.24703, 0.24349, 0.26159]
-            # stds = [0.2023, 0.1994, 0.2010]
+            # stds = [0.24703, 0.24349, 0.26159]
+            stds = [0.2023, 0.1994, 0.2010]
         elif dataset == "cifar100":
             means = [0.5071, 0.4865, 0.44092]
             stds = [0.2673, 0.2564, 0.2761]

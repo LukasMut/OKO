@@ -8,7 +8,7 @@ from typing import Any
 import flax.linen as nn
 import jax.numpy as jnp
 from einops import rearrange
-from jax import vmap
+from jax import vmap, jit
 from jaxtyping import Array, Float32, jaxtyped
 from typeguard import typechecked as typechecker
 
@@ -33,6 +33,7 @@ class TripletHead(nn.Module):
         else:
             self.query = nn.Dense(self.num_classes, name="triplet_query")
 
+    
     @jaxtyped
     @typechecker
     def aggregation(
@@ -40,8 +41,6 @@ class TripletHead(nn.Module):
     ) -> Float32[Array, "#batch num_cls"]:
         """Aggregate logits over all members in a set."""
         dots = vmap(self.query, in_axes=1, out_axes=1)(x)
-        # NOTE: scaling/normalizing does not seem to help
-        # dots =/ jnp.sqrt(self.num_classes)
         out = dots.sum(axis=1)
         return out
 
