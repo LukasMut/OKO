@@ -27,7 +27,7 @@ def get_configs(args, **kwargs):
     M = kwargs.pop("n_samples")
     data_config.n_samples = M
     data_config.n_classes = args.n_classes
-    data_config.k = args.k
+    data_config.k = kwargs.pop("num_odds")
     data_config.targets = args.targets
     data_config.apply_augmentations = args.apply_augmentations
 

@@ -32,6 +32,7 @@ def get_combination(
     learning_rates: List[float],
     num_sets: List[int],
     probability_masses: List[float],
+    num_odds: List[int],
     seeds: List[int],
 ):
     combs = [None]
@@ -47,6 +48,7 @@ def get_combination(
                     num_sets,
                 ),
                 probability_masses,
+                num_odds,
                 seeds,
             )
         )
@@ -283,6 +285,7 @@ def make_results_df(
     results_current_run["n_frequent_classes"] = data_config.n_frequent_classes
     results_current_run["min_samples"] = int(data_config.min_samples)
     results_current_run["probability"] = data_config.class_probs
+    results_current_run["num_sets"] = data_config.num_sets
     results_current_run["initial_lr"] = data_config.initial_lr
     results_current_run["l2_reg"] = model_config.regularization
     results_current_run["convergence_time"] = epoch
@@ -336,6 +339,7 @@ def save_results(
             "targets",
             "n_frequent_classes",
             "min_samples",
+            "num_sets",
             "probability",
             "initial_lr",
             "l2_reg",

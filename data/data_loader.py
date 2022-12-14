@@ -172,9 +172,7 @@ class DataLoader:
             self.augmentations.append(self.flip_up_down)
 
         if self.data_config.name.lower().startswith("cifar"):
-            self.flip_up_down = jax.jit(pix.random_flip_up_down)
             self.rnd_crop = jax.jit(pix.random_crop)
-            self.augmentations.append(self.flip_up_down)
             self.augmentations.append(self.rnd_crop)
             
 
@@ -302,7 +300,7 @@ class DataLoader:
                         (i + 1) * self.data_config.main_batch_size,
                     )
                 )
-            X = self.X[np.asarray(subset)]
+            X = jax.device_put(self.X[np.asarray(subset)])
             y = self.y[np.asarray(subset)]
             yield (X, y)
 

@@ -38,7 +38,7 @@ def parseargs():
         help='average number of samples per class')
     aa('--n_classes', type=int,
         help='number of classes in dataset')
-    aa('--k', type=int, default=1,
+    aa('--k', type=int, nargs="+",
         choices=list(range(10)),
         help='number of odd classes in a set of k+2 examples with 2 examples coming from the same class')
     aa('--targets', type=str, default="hard",
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     # parse arguments
     args = parseargs()
     # get current combination of settings
-    (n_samples, epochs, oko_batch_size, main_batch_size, eta, num_sets), p_mass, rnd_seed = train.get_combination(
+    (n_samples, epochs, oko_batch_size, main_batch_size, eta, num_sets), p_mass, num_odds, rnd_seed = train.get_combination(
         samples=args.samples,
         epochs=args.epochs,
         oko_batch_sizes=args.oko_batch_sizes,
@@ -98,6 +98,7 @@ if __name__ == "__main__":
         learning_rates=args.etas,
         num_sets=args.num_sets,
         probability_masses=args.probability_masses,
+        num_odds=args.k,
         seeds=args.seeds,
         )
 
@@ -125,6 +126,7 @@ if __name__ == "__main__":
         main_batch_size=main_batch_size,
         num_sets=num_sets,
         p_mass=p_mass,
+        num_odds=num_odds,
         eta=eta,
         )
 
