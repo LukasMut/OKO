@@ -4,7 +4,6 @@
 import os
 import pickle
 import re
-from collections import Counter
 from typing import Tuple
 
 import flax
@@ -18,7 +17,6 @@ from ml_collections import config_dict
 
 from data import DataPartitioner
 
-TASKS = ["mle", "mtl"]
 MODELS = ["Custom", "ResNet18", "ResNet50", "ResNet101", "ViT"]
 
 Array = jnp.ndarray
@@ -29,10 +27,6 @@ def load_data(root: str, file: str) -> dict:
     with h5py.File(os.path.join(root, file), "r") as f:
         data = {k: f[k][:] for k in f.keys()}
     return data
-
-
-def uniform(n_classes):
-    return np.ones(n_classes) * (1 / n_classes)
 
 
 def load_metrics(metric_path):
@@ -142,46 +136,6 @@ def get_fewshot_subsets(
         val_set = get_full_dataset(val_partitioner)
     return train_set, val_set
 
-
-def get_class_distribution(num_classes: int, p: float, k: int = 3) -> Array:
-    """With probabilities $(p/k)$ and $(1-p)/(T-k)$ sample $k$ frequent and $T-k$ rare classes respectively."""
-    distribution = np.zeros(num_classes)
-    p_k = p / k
-    q_k = (1 - p) / (num_classes - k)
-    frequent_classes = np.random.choice(num_classes, size=k, replace=False)
-    rare_classes = np.asarray(
-        list(set(range(num_classes)).difference(list(frequent_classes)))
-    )
-    distribution[frequent_classes] += p_k
-    distribution[rare_classes] += q_k
-    return distribution
-
-
-def sample_instances(n_classes: int, n_totals: int, p: float) -> Array:
-    class_distribution = get_class_distribution(num_classes=n_classes, p=p)
-    sample = np.random.choice(
-        n_classes, size=n_totals, replace=True, p=class_distribution
-    )
-    sample = add_remainder(sample, n_classes)
-    return sample
-
-
-def add_remainder(sample: np.ndarray, n_classes: int) -> np.ndarray:
-    remainder = np.array(
-        [y for y in np.arange(n_classes) if y not in np.unique(sample)]
-    )
-    sample = np.hstack((sample, remainder))
-    return sample
-
-
-def get_histogram(sample: np.ndarray, min_samples: int) -> np.ndarray:
-    _, hist = zip(*sorted(Counter(sample).items(), key=lambda kv: kv[0], reverse=False))
-    hist = np.array(hist)
-    # guarantee that there are at least C (= min_samples) examples per class
-    hist = np.where(hist < min_samples, hist + abs(hist - min_samples), hist)
-    return hist
-
-
 def get_subset(y, hist):
     subset = []
     for k, freq in enumerate(hist):
@@ -190,31 +144,3 @@ def get_subset(y, hist):
         )
     subset = np.random.permutation(subset)
     return subset
-
-
-def sample_subset(
-    X: np.ndarray,
-    y: np.ndarray,
-    N: int,
-    C: int,
-) -> Tuple[np.ndarray, np.ndarray]:
-    M = len(np.unique(y))
-    sample = sample_instances(M, N)
-    hist = get_histogram(sample, C)
-    subset = get_subset(y, hist)
-    X_prime = X[subset]
-    y_prime = y[subset]
-    y_prime = jax.nn.one_hot(y_prime, M)
-    return (X_prime, y_prime)
-
-
-def get_class_weights(M: int, K: int, C: int) -> np.ndarray:
-    """Compute class weights to calculate weighted cross-entropy error."""
-    N = M * K
-    sample = sample_instances(K, N)
-    hist = get_histogram(sample, C)
-    q_prime = hist / hist.sum()  # empirical class distribution (different from q)
-    w = q_prime ** (-1)
-    # smooth class weights to avoid exploding gradient/numerical overflow issues
-    w = (w / w.sum()) * K
-    return jax.device_put(w)
