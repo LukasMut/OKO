@@ -8,22 +8,11 @@ import flax
 import jax
 import jax.numpy as jnp
 import optax
-from einops import rearrange
 from jax import random
 
 Array = jnp.ndarray
 State = Any
 FrozenDict = flax.core.frozen_dict.FrozenDict
-
-
-@jax.jit
-def c_entropy(targets, logits, w=None) -> Array:
-    if isinstance(w, Array):
-        # compute weighted version of the cross-entropy error
-        targets *= w
-    nll = jnp.sum(-(targets * jax.nn.log_softmax(logits, axis=-1)))
-    nll /= targets.shape[0]
-    return nll
 
 
 @jax.jit
