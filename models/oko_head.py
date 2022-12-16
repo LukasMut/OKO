@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-__all__ = ["TripletHead"]
+__all__ = ["OKOHead"]
 
 from typing import Any
 
 import flax.linen as nn
 import jax.numpy as jnp
 from einops import rearrange
-from jax import vmap, jit
+from jax import vmap
 from jaxtyping import Array, Float32, jaxtyped
 from typeguard import typechecked as typechecker
 
-Array = jnp.ndarray
 
-
-class TripletHead(nn.Module):
+class OKOHead(nn.Module):
     backbone: str
     num_classes: int
     k: int
@@ -28,12 +26,11 @@ class TripletHead(nn.Module):
                     nn.LayerNorm(),
                     nn.Dense(self.num_classes),
                 ],
-                name="triplet_query",
+                name="oko_query",
             )
         else:
-            self.query = nn.Dense(self.num_classes, name="triplet_query")
+            self.query = nn.Dense(self.num_classes, name="oko_query")
 
-    
     @jaxtyped
     @typechecker
     def aggregation(
@@ -52,7 +49,7 @@ class TripletHead(nn.Module):
     ) -> Float32[Array, "#batch num_cls"]:
         if train:
             x = rearrange(
-                x, "(n k) d -> n k d", n=x.shape[0] // (self.k + 2), k=self.k + 2
+                x, "(b k) d -> b k d", b=x.shape[0] // (self.k + 2), k=self.k + 2
             )
             out = self.aggregation(x)
         else:

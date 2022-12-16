@@ -75,7 +75,6 @@ class DataPartitioner:
         """Get means and STDs of training data for CIFAR-10/CIFAR-100."""
         if dataset == "cifar10":
             means = [0.4914, 0.4822, 0.4465]
-            # stds = [0.24703, 0.24349, 0.26159]
             stds = [0.2023, 0.1994, 0.2010]
         elif dataset == "cifar100":
             means = [0.5071, 0.4865, 0.44092]
@@ -202,31 +201,3 @@ class DataPartitioner:
             )
 
         return (X_train, y_train), (X_val, y_val)
-
-    def save_subsets(
-        self, train_set: jnp_array, val_set: jnp_array, out_path: str
-    ) -> None:
-        """Save few-shot subset to disk."""
-        out_path = self.make_outpath(out_path)
-        filename = f"few_shot_{self.dataset}.hdf5"
-        with h5py.File(os.path.join(out_path, filename), "w") as fp:
-            fp["train_images"] = train_set[0]
-            fp["train_labels"] = train_set[1]
-            fp["val_images"] = val_set[0]
-            fp["val_labels"] = val_set[1]
-
-    def make_outpath(self, out_path: str) -> str:
-        """Create outout directory."""
-        out_path = os.path.join(
-            out_path,
-            f"{self.n_samples:d}_samples",
-            f"seed{self.seed:02d}",
-        )
-        if not os.path.exists(out_path):
-            print(f"\n...Creating output directory: {out_path}\n")
-            os.makedirs(out_path, exist_ok=True)
-        try:
-            os.remove(os.path.join(out_path, f"oko_dataset_{self.dataset}.hdf5"))
-        except FileNotFoundError:
-            print("\nThere is no file to be removed.\n")
-        return out_path

@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import flax.linen as nn
 
 from typing import Sequence
-from .triplet import TripletHead
+from .oko_head import OKOHead
 
 from .modules import Identity, Normalization, Sigmoid
 from utils import TASKS
@@ -72,7 +72,7 @@ class Custom(nn.Module):
             source=self.source,
             capture_intermediates=self.capture_intermediates,
         )
-        self.head = TripletHead(
+        self.head = OKOHead(
             backbone="custom",
             num_classes=self.num_classes,
             k=self.k,

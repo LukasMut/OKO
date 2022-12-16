@@ -4,11 +4,9 @@
 
 import flax.linen as nn
 import jax.numpy as jnp
+from jaxtyping import Array
 
-from .triplet import TripletHead
-
-
-Array = jnp.ndarray
+from .oko_head import OKOHead
 
 
 def img_to_patch(x, patch_size, flatten_channels=True) -> Array:
@@ -69,7 +67,7 @@ class ViT(nn.Module):
     num_heads: int  # Number of heads to use in the Multi-Head Attention block
     num_channels: int  # Number of channels of the input (3 for RGB)
     num_classes: int  # Number of classes to predict
-    k: int # number of odd classes in a set
+    k: int  # number of odd classes in a set
     num_layers: int  # Number of layers to use in the Transformer
     patch_size: int  # Number of pixels that the patches have per dimension
     num_patches: int  # Maximum number of patches an image can have
@@ -97,10 +95,10 @@ class ViT(nn.Module):
             (1, 1 + self.num_patches, self.embed_dim),
         )
 
-        self.head = TripletHead(
-                backbone="vit",
-                num_classes=self.num_classes,
-                k=self.k,
+        self.head = OKOHead(
+            backbone="vit",
+            num_classes=self.num_classes,
+            k=self.k,
         )
 
     @nn.compact

@@ -3,12 +3,11 @@
 
 from functools import partial
 from typing import Any, Callable, Sequence, Tuple
-from flax import linen as nn
+
 import jax.numpy as jnp
+from flax import linen as nn
 
-from .triplet import TripletHead
-from .modules import Identity, Normalization, Sigmoid
-
+from .oko_head import OKOHead
 
 Array = jnp.ndarray
 ModuleDef = Any
@@ -88,11 +87,12 @@ class ResNet(nn.Module):
     capture_intermediates: bool = False
 
     def setup(self):
-        self.head = TripletHead(
-                backbone="resnet",
-                num_classes=self.num_classes,
-                k=self.k,
+        self.head = OKOHead(
+            backbone="resnet",
+            num_classes=self.num_classes,
+            k=self.k,
         )
+
     @nn.compact
     def __call__(self, x: Array, train: bool = True) -> Array:
         conv = partial(self.conv, use_bias=False, dtype=self.dtype)
@@ -122,7 +122,7 @@ class ResNet(nn.Module):
                 )(x)
         x = x.mean(axis=(1, 2))
         if self.capture_intermediates:
-            self.sow("intermediates", "latent_reps")        
+            self.sow("intermediates", "latent_reps")
         out = self.head(x, train)
         out = jnp.asarray(out, self.dtype)
         return out
