@@ -234,6 +234,7 @@ if __name__ == "__main__":
     else:
         X_test = images
 
+    X_test = jax.device_put(X_test)
     y_test = jax.nn.one_hot(x=labels, num_classes=jnp.max(labels) + 1)
 
     train.inference(
