@@ -11,7 +11,6 @@ from utils import RGB_DATASETS
 def get_configs(args, **kwargs):
     """Create config dicts for dataset, model and optimizer."""
     data_config = config_dict.ConfigDict()
-    data_config.root = args.data_path
     data_config.name = args.dataset.lower()
     # minimum number of instances per class
     data_config.min_samples = args.min_samples
