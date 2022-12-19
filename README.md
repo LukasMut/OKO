@@ -5,7 +5,6 @@
 
 ```bash
 python main.py --out_path /path/to/results \
---data_path ./datasets/cifar10/processed \
 --network Custom \
 --samples 50 \
 --n_classes 10 \
