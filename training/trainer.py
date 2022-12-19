@@ -61,11 +61,13 @@ class OKOTrainer:
         """Initialise parameters (i.e., weights and biases) of neural network."""
         key_i, key_j = random.split(random.PRNGKey(self.rnd_seed))
 
+        """
         if self.data_config.name.endswith("mnist"):
-            H, W = self.data_config.input_dim
+            H, W, C = self.data_config.input_dim
             C = 1  # gray channel
         else:
-            H, W, C = self.data_config.input_dim
+        """
+        H, W, C = self.data_config.input_dim
 
         def get_init_batch(batch_size: int) -> Array:
             return random.normal(

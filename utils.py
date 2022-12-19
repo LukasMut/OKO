@@ -7,26 +7,78 @@ import re
 from typing import Tuple
 
 import flax
-import h5py
 import jax
 import jax.numpy as jnp
 import numpy as np
-import torch
+import tensorflow_datasets as tfds
 from flax import serialization
+from jaxtyping import AbstractDtype, Array, Float32, jaxtyped
 from ml_collections import config_dict
+from typeguard import typechecked as typechecker
 
-from data import DataPartitioner
-
+RGB_DATASETS = ["cifar10", "cifar100", "imagenet", "imagenet_lt"]
 MODELS = ["Custom", "ResNet18", "ResNet50", "ResNet101", "ViT"]
 
-Array = jnp.ndarray
 FrozenDict = config_dict.FrozenConfigDict
 
 
-def load_data(root: str, file: str) -> dict:
-    with h5py.File(os.path.join(root, file), "r") as f:
-        data = {k: f[k][:] for k in f.keys()}
-    return data
+class UInt8orFP32(AbstractDtype):
+    dtypes = ["uint8", "float32"]
+
+
+def get_data(dataset: str, split: str) -> Tuple[np.ndarray, np.ndarray]:
+    tf_split = get_tf_split(split)
+    images, labels = tfds.as_numpy(
+        tfds.load(
+            dataset,
+            split=tf_split,
+            batch_size=-1,
+            as_supervised=True,
+        )
+    )
+    images = jnp.asarray(images)
+    labels = jax.nn.one_hot(x=labels, num_classes=np.unique(labels).shape[0])
+    return (images, labels)
+
+
+def get_tf_split(split: str) -> str:
+    if split == "train":
+        tf_split = "train[:80%]"
+    elif split == "val":
+        tf_split = "train[80%:]"
+    else:
+        tf_split = split
+    return tf_split
+
+
+def get_data_statistics(
+    dataset: str,
+) -> Tuple[Float32[Array, "3"], Float32[Array, "3"]]:
+    """Get means and stds of CIFAR-10, CIFAR-100, or the ImageNet training data."""
+    if dataset == "cifar10":
+        means = jnp.array([0.4914, 0.4822, 0.4465], dtype=jnp.float32)
+        stds = jnp.array([0.2023, 0.1994, 0.2010], dtype=jnp.float32)
+    elif dataset == "cifar100":
+        means = jnp.array([0.5071, 0.4865, 0.44092], dtype=jnp.float32)
+        stds = jnp.array([0.2673, 0.2564, 0.2761], dtype=jnp.float32)
+    elif dataset == "imagenet":
+        means = jnp.array([0.485, 0.456, 0.406], dtype=jnp.float32)
+        stds = jnp.array([0.229, 0.224, 0.225], dtype=jnp.float32)
+    else:
+        raise Exception(f"\nDataset statistics for {dataset} are not available.\n")
+    return means, stds
+
+
+@jaxtyped
+@typechecker
+def normalize_images(
+    images: UInt8orFP32[Array, "#batchk h w c"],
+    data_config: FrozenDict,
+) -> UInt8orFP32[Array, "#batchk h w c"]:
+    images = images / data_config.max_pixel_value
+    images -= data_config.means
+    images /= data_config.stds
+    return images
 
 
 def load_metrics(metric_path):
@@ -67,74 +119,11 @@ def find_binaries(param_path):
     return param_binaries.pop()
 
 
-def get_epoch(binary):
-    return int("".join(c for c in binary if c.isdigit()))
-
-
 def merge_params(pretrained_params, current_params):
     return flax.core.FrozenDict(
         {"encoder": pretrained_params["encoder"], "clf": current_params["clf"]}
     )
 
-
-def get_val_set(dataset, data_path) -> Tuple[Array, Array]:
-    if dataset == "cifar10":
-        data = np.load(os.path.join(data_path, "validation.npz"))
-        X = data["data"]
-        y = data["labels"]
-    else:
-        data = torch.load(os.path.join(data_path, "validation.pt"))
-        X = data[0].numpy()
-        y = data[1].numpy()
-    X = jnp.array(X)
-    X = X.reshape(X.shape[0], -1)
-    y = jax.nn.one_hot(y, jnp.max(y) + 1)
-    return (X, y)
-
-
-def get_full_dataset(partitioner: object) -> Tuple[Array, Array]:
-    """Get the full dataset"""
-    images = jnp.array(partitioner.images)
-    if hasattr(partitioner, "transform"):
-        transforms = partitioner.get_transform()
-        images = jnp.array([transforms(img).permute(1, 2, 0).numpy() for img in images])
-    labels = partitioner.labels
-    labels = jax.nn.one_hot(labels, jnp.max(labels) + 1)
-    rnd_perm = np.random.permutation(np.arange(images.shape[0]))
-    images = images[rnd_perm]
-    labels = labels[rnd_perm]
-    return (images, labels)
-
-
-def get_fewshot_subsets(
-    args, n_samples: int, probability_mass: float, rnd_seed: int
-) -> Tuple[Array, Array]:
-    train_partitioner = DataPartitioner(
-        dataset=args.dataset,
-        data_path=args.data_path,
-        n_samples=n_samples,
-        seed=rnd_seed,
-        min_samples=args.min_samples,
-        probability_mass=probability_mass,
-        train=True,
-    )
-    if n_samples:
-        # get a subset of the data with M samples per class
-        images, labels = train_partitioner.get_subset()
-        train_set, val_set = train_partitioner.create_splits(images, labels)
-    else:
-        train_set = get_full_dataset(train_partitioner)
-        val_partitioner = DataPartitioner(
-            dataset=args.dataset,
-            data_path=args.data_path,
-            n_samples=n_samples,
-            seed=rnd_seed,
-            min_samples=args.min_samples,
-            probability_mass=probability_mass,
-            train=False,
-        )
-        val_set = get_full_dataset(val_partitioner)
-    return train_set, val_set
 
 def get_subset(y, hist):
     subset = []

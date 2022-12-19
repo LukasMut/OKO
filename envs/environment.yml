@@ -20,6 +20,7 @@ dependencies:
  - h5py
  - pip
  - pip:
+   - tensorflow_datasets==4.7.* 
    - ml_collections 
    - dm-haiku 
    - dm-pix 
@@ -27,7 +28,7 @@ dependencies:
    - flax
    - optax  
    - jaxlib   
-   - tensorflow==2.5.0
+   - tensorflow==2.9.*
    - codecov
    - tqdm
    - pep8

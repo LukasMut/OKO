@@ -5,6 +5,8 @@ import re
 
 from ml_collections import config_dict
 
+from utils import RGB_DATASETS
+
 
 def get_configs(args, **kwargs):
     """Create config dicts for dataset, model and optimizer."""
@@ -30,6 +32,17 @@ def get_configs(args, **kwargs):
     data_config.k = kwargs.pop("num_odds")
     data_config.targets = args.targets
     data_config.apply_augmentations = args.apply_augmentations
+
+    if data_config.name in RGB_DATASETS:
+        import utils
+
+        data_config.is_rgb_dataset = True
+        data_config.max_pixel_value = 255.0
+        means, stds = utils.get_data_statistics(data_config.name)
+        data_config.means = means
+        data_config.stds = stds
+    else:
+        data_config.is_rgb_dataset = False
 
     data_config.oko_batch_size = kwargs.pop("oko_batch_size")
     data_config.main_batch_size = kwargs.pop("main_batch_size")

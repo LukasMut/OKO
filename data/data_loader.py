@@ -29,7 +29,7 @@ class UInt8orFP32(AbstractDtype):
 
 
 @dataclass(init=True, repr=True)
-class DataLoader:
+class OKOLoader:
     data: Tuple[Array, Array]
     data_config: FrozenDict
     model_config: FrozenDict
@@ -48,10 +48,6 @@ class DataLoader:
         np.random.seed(self.seed)
         random.seed(self.seed)
         self.rng_seq = hk.PRNGSequence(self.seed)
-
-        if self.data_config.name.endswith("mnist"):
-            self.X = np.expand_dims(self.X, axis=-1)
-
         self.num_classes = self.y.shape[-1]
         self.y_prime = jnp.nonzero(self.y)[-1]
         self.oko_classes = np.unique(self.y_prime)
@@ -164,7 +160,7 @@ class DataLoader:
         self._make_augmentations()
 
     def _make_augmentations(self) -> None:
-        if  self.data_config.name.lower() == "mnist":
+        if self.data_config.name.lower() == "mnist":
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
             self.augmentations = [self.flip_left_right]
 
@@ -177,7 +173,6 @@ class DataLoader:
             self.rnd_crop = pix.random_crop
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
             self.augmentations = [self.rnd_crop, self.flip_left_right]
-            
 
     @jaxtyped
     @typechecker
@@ -185,13 +180,22 @@ class DataLoader:
         self, batch: UInt8orFP32[Array, "#batchk h w c"]
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         for i, augmentation in enumerate(self.augmentations):
-            if (
-                self.data_config.name.startswith("cifar")
-                and i == 0
-            ):
-                batch = augmentation(key=next(self.rng_seq), image=batch, crop_sizes=batch.shape)
+            if self.data_config.name.startswith("cifar") and i == 0:
+                batch = augmentation(
+                    key=next(self.rng_seq), image=batch, crop_sizes=batch.shape
+                )
             else:
                 batch = augmentation(key=next(self.rng_seq), image=batch)
+        return batch
+
+    @jaxtyped
+    @typechecker
+    def _normalize(
+        self, batch: UInt8orFP32[Array, "#batchk h w c"]
+    ) -> UInt8orFP32[Array, "#batchk h w c"]:
+        batch = batch / self.data_config.max_pixel_value
+        batch -= self.data_config.means
+        batch /= self.data_config.stds
         return batch
 
     @staticmethod
@@ -333,6 +337,8 @@ class DataLoader:
         X = jax.device_put(self.X[batch_sets])
         if self.data_config.apply_augmentations:
             X = self.apply_augmentations(X)
+        if self.data_config.is_rgb_dataset:
+            X = self._normalize(X)
         return (X, y)
 
     def smoothing(self) -> Array:
