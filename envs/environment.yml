@@ -10,7 +10,7 @@ dependencies:
  - pandas=1.0.*
  - scikit-learn=0.24.*
  - pytorch=1.12.*
- - numba=0.53.*
+ - numba=0.54.*
  - matplotlib=3.2.*
  - seaborn=0.11.*
  - jupyterlab
@@ -18,7 +18,7 @@ dependencies:
  - scipy
  - pip
  - pip:
-   - tensorflow==2.9.*
+   - tensorflow==2.9.1
    - tensorflow_datasets==4.7.*
    - jaxlib==0.3.10
    - flax==0.5.*

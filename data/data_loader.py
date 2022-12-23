@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-__all__ = ["DataLoader"]
+__all__ = ["OKOLoader"]
 
 import copy
 import math
@@ -41,13 +41,13 @@ class OKOLoader:
         num_gpus = 2
         self.device_num = random.choices(range(num_gpus))[0]
         self.X = np.asarray(self.data[0])
-        self.y = copy.deepcopy(self.data[1])
-        self.y = jax.device_put(self.y)
+        self.y = jax.device_put(copy.deepcopy(self.data[1]))
 
         # seed random number generator
         np.random.seed(self.seed)
         random.seed(self.seed)
         self.rng_seq = hk.PRNGSequence(self.seed)
+
         self.num_classes = self.y.shape[-1]
         self.y_prime = jnp.nonzero(self.y)[-1]
         self.oko_classes = np.unique(self.y_prime)
@@ -92,7 +92,7 @@ class OKOLoader:
         @jaxtyped
         @typechecker
         def sample_set_instances(
-            y_prime: Int32[Array, "n"], set: Int32[np.ndarray, "k"]
+            y_prime: Int32[Array, "n"], set: Int32[np.ndarray, "set_card"]
         ) -> List[np.int32]:
             """Uniformly sample instances/indices for the two classes in a set without replacement."""
             instances = []
@@ -107,7 +107,7 @@ class OKOLoader:
                 instances.extend(rnd_sample)
             return instances
 
-        @partial(jax.jit, static_argnames=["num_cls", "set_card", "k"])
+        @partial(jax.jit, static_argnums=[0, 1, 2])
         def make_bimodal_targets(
             num_cls: int,
             set_card: int,
@@ -120,7 +120,7 @@ class OKOLoader:
             y = (y_p + y_o) / set_card
             return y
 
-        @partial(jax.jit, static_argnames=["num_cls", "set_card", "k"])
+        @partial(jax.jit, static_argnums=[0, 1, 2])
         def make_multimodal_targets(
             num_cls: int,
             set_card: int,
@@ -205,7 +205,7 @@ class OKOLoader:
         members: Int32[Array, "#batch _"],
         pair_classes: Int32[np.ndarray, "#batch"],
     ) -> Int32[np.ndarray, "#batch card"]:
-        """Make b sets with k+2 members, where k denotes the number of odd classes."""
+        """Make b sets with k+2 members (i.e., set_card = k+2), where k denotes the number of odd classes in the set."""
         # return np.c_[pair_classes, members, pair_classes]
         return np.c_[members, pair_classes]
 
@@ -218,7 +218,7 @@ class OKOLoader:
     ) -> Int32[np.ndarray, "#batch k"]:
         """Find the k odd classes per set."""
         if self.data_config["k"] == 1:
-            # a single odd class in a set
+            # there's a single odd class in a set
             odd_classes = np.array(
                 [
                     set[np.where(set != sim_cls)[0][0]]
@@ -226,7 +226,7 @@ class OKOLoader:
                 ]
             )
         else:
-            # multiple odd classes in a set
+            # there are multiple odd classes in a set
             odd_classes = np.array(
                 [
                     set[np.where(set != sim_cls)[0]]
