@@ -17,7 +17,7 @@ from ml_collections import config_dict
 from typeguard import typechecked as typechecker
 
 RGB_DATASETS = ["cifar10", "cifar100", "imagenet", "imagenet_lt"]
-MODELS = ["Custom", "ResNet18", "ResNet50", "ResNet101", "ViT"]
+MODELS = ["Custom", "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ViT"]
 
 FrozenDict = config_dict.FrozenConfigDict
 
