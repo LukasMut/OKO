@@ -133,9 +133,7 @@ class OKOLoader:
 
         # jit or partially initialize functions for computational efficiency
         if self.train:
-            self.sample_member = partial(
-                sample_member, self.classes, self.set_card - 1
-            )
+            self.sample_member = partial(sample_member, self.classes, self.set_card - 1)
             self.sample_members = sample_members
             self.sample_set_instances = partial(sample_set_instances, self.y_prime)
             if self.data_config.targets == "soft":
