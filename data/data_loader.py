@@ -37,9 +37,6 @@ class OKOLoader:
     train: bool = True
 
     def __post_init__(self) -> None:
-        self.cpu_devices = jax.devices("cpu")
-        num_gpus = 2
-        self.device_num = random.choices(range(num_gpus))[0]
         self.X = np.asarray(self.data[0])
         self.y = jax.device_put(copy.deepcopy(self.data[1]))
 
@@ -50,7 +47,7 @@ class OKOLoader:
 
         self.num_classes = self.y.shape[-1]
         self.y_prime = jnp.nonzero(self.y)[-1]
-        self.oko_classes = np.unique(self.y_prime)
+        self.classes = np.unique(self.y_prime)
 
         if self.train:
             self.set_card = self.data_config.k + 2
@@ -137,7 +134,7 @@ class OKOLoader:
         # jit or partially initialize functions for computational efficiency
         if self.train:
             self.sample_member = partial(
-                sample_member, self.oko_classes, self.set_card - 1
+                sample_member, self.classes, self.set_card - 1
             )
             self.sample_members = sample_members
             self.sample_set_instances = partial(sample_set_instances, self.y_prime)
