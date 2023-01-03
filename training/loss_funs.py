@@ -93,9 +93,9 @@ def vit_predict(
 def loss_fn_custom(
     state: FrozenDict,
     params: FrozenDict,
-    batch: Tuple[Array, Array],
+    X: Array,
+    y: Array,
 ) -> Tuple[Array, Tuple[Array]]:
-    X, y = batch
     logits = cnn_predict(state=state, params=params, X=X)
     loss = optax.softmax_cross_entropy(logits, y).mean()
     return loss, logits
@@ -104,10 +104,10 @@ def loss_fn_custom(
 def loss_fn_resnet(
     state: FrozenDict,
     params: FrozenDict,
-    batch: Tuple[Array, Array],
+    X: Array,
+    y: Array,
     train: bool = True,
 ) -> Tuple[Array, Tuple[Array]]:
-    X, y = batch
     logits, new_state = resnet_predict(state=state, params=params, X=X, train=train)
     loss = optax.softmax_cross_entropy(logits, y).mean()
     aux = (logits, new_state)
@@ -117,11 +117,11 @@ def loss_fn_resnet(
 def loss_fn_vit(
     state: FrozenDict,
     params: FrozenDict,
-    batch: Tuple[Array, Array],
+    X: Array,
+    y: Array,
     rng=None,
     train: bool = True,
 ) -> Tuple[Array, Tuple[Array]]:
-    X, y = batch
     logits, rng = vit_predict(state=state, params=params, rng=rng, X=X, train=train)
     loss = optax.softmax_cross_entropy(logits, y).mean()
     aux = (logits, rng)
