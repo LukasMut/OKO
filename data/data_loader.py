@@ -23,10 +23,14 @@ from ml_collections import config_dict
 from typeguard import typechecked as typechecker
 
 FrozenDict = config_dict.FrozenConfigDict
-
+PRNGSequence = Any
 
 class UInt8orFP32(AbstractDtype):
     dtypes = ["uint8", "float32"]
+
+
+class Int32or64(AbstractDtype):
+    dtypes = ["int8", "int64"]
 
 
 @register_pytree_node_class
@@ -62,7 +66,7 @@ class MakeSets:
         pair_classes: Int32[np.ndarray, "#batch"],
     ) -> Union[Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "#batch"]]:
         """Find the k odd classes per set."""
-        if self.num_odds:
+        if self.num_odds == 1:
             # there's a single odd class in a set
             odd_classes = np.array(
                 [
@@ -147,10 +151,12 @@ class MakeTargets:
     def tree_unflatten(cls, aux_data, children):
         return cls(*children, **aux_data)
 
+    @jaxtyped
+    @typechecker
     def make_bimodal_targets(
         self,
-        pair_classes: Int32[np.ndarray, "#batch"],
-        oko_classes: Int32[np.ndarray, "#batch"],
+        pair_classes: Int32[Array, "#batch"],
+        oko_classes: Int32[Array, "#batch"],
     ) -> Float32[Array, "#batch num_cls"]:
         y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_cls) * (
             self.set_card - self.num_odds
@@ -159,10 +165,12 @@ class MakeTargets:
         y = (y_p + y_o) / self.set_card
         return y
 
+    @jaxtyped
+    @typechecker
     def make_multimodal_targets(
         self,
-        pair_classes: Int32[np.ndarray, "#batch"],
-        odd_classes: Int32[np.ndarray, "#batch k"],
+        pair_classes: Int32[Array, "#batch"],
+        odd_classes: Int32[Array, "#batch k"],
     ) -> Float32[Array, "#batch num_cls"]:
         y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_cls) * (
             self.set_card - self.num_odds
@@ -175,14 +183,48 @@ class MakeTargets:
     @jax.jit
     def _make_targets(
         self,
-        pair_classes: Int32[np.ndarray, "#batch"],
-        odd_classes: Int32[np.ndarray, "#batch k"],
+        pair_classes: Int32[Array, "#batch"],
+        odd_classes: Union[Int32[Array, "#batch"], Int32[Array, "#batch k"]],
     ) -> Float32[Array, "#batch num_cls"]:
         if self.num_odds == 1:
             y = self.make_bimodal_targets(pair_classes, odd_classes)
         else:
             y = self.make_multimodal_targets(pair_classes, odd_classes)
         return y
+
+
+
+@register_pytree_node_class
+@dataclass(init=True, repr=True, frozen=True)
+class Sampler:
+    classes: Int32or64[Array, "num_cls"]
+    batch_size: int
+    num_set_classes: int
+    random_numbers: Iterator
+
+    def tree_flatten(self) -> Tuple[Tuple[Int32[Array, "num_cls"]], Dict[str, Any]]:
+        children = (self.classes,)
+        aux_data = {"batch_size": self.batch_size,  "num_set_classes": self.num_set_classes, "random_numbers": self.random_numbers}
+        return (children, aux_data)
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
+    def sample_member(self, q: float, key: Array) -> Array:
+        return jax.random.choice(
+                key, self.classes, shape=(self.num_set_classes,), replace=False, p=q
+            )
+    
+    def get_key(self) -> Array:
+        return jax.random.PRNGKey(next(self.random_numbers))
+
+    @jax.jit
+    def sample_members(self, q=None) -> Array:
+        """Sample pairs of objects from the same class."""
+        key = self.get_key()
+        keys = jax.random.split(key, num=self.batch_size)
+        return vmap(partial(self.sample_member, q))(keys)
 
 
 @dataclass(init=True, repr=True)
@@ -204,18 +246,22 @@ class OKOLoader:
 
         self.num_classes = self.y.shape[-1]
         self.y_prime = jnp.nonzero(self.y)[-1]
-        self.classes = np.unique(self.y_prime)
+        self.classes = jnp.unique(self.y_prime)
 
         if self.train:
             self.set_card = self.data_config.k + 2
             self.num_batches = math.ceil(
                 self.data_config.num_sets / self.data_config.oko_batch_size
             )
+            max_num = math.ceil(self.num_batches * self.data_config.epochs)
+            self.sampler = Sampler(self.classes, self.data_config.oko_batch_size, self.set_card - 1, iter(np.random.permutation(max_num)))
             self.set_maker = MakeSets(self.data_config.k, self.data_config.targets)
             if self.data_config.targets == "soft":
                 self.target_maker = MakeTargets(
                     self.num_classes, self.set_card, self.data_config.k
                 )
+            self._create_functions()
+            self._make_augmentations()
         else:
             self.num_batches = math.ceil(
                 self.X.shape[0] / self.data_config.main_batch_size
@@ -231,23 +277,9 @@ class OKOLoader:
             self.p = self.hist / self.hist.sum()
             self.temperature = 0.1
 
-        self.create_functions()
+    
 
-    def create_functions(self) -> None:
-        def sample_member(
-            classes: Array, num_set_classes: int, q: float, key: Array
-        ) -> Array:
-            return jax.random.choice(
-                key, classes, shape=(num_set_classes,), replace=False, p=q
-            )
-
-        @partial(jax.jit, static_argnames=["seed"])
-        def sample_members(seed: int, q=None) -> Array:
-            """Sample pairs of objects from the same class."""
-            key = jax.random.PRNGKey(seed)
-            keys = jax.random.split(key, num=self.data_config.oko_batch_size)
-            return vmap(partial(self.sample_member, q))(keys)
-
+    def _create_functions(self) -> None:
         @jaxtyped
         @typechecker
         def sample_set_instances(
@@ -266,13 +298,10 @@ class OKOLoader:
                 instances.extend(rnd_sample)
             return instances
 
-        # jit or partially initialize functions for computational efficiency
+        # partially initialize functions for computational efficiency
         if self.train:
-            self.sample_member = partial(sample_member, self.classes, self.set_card - 1)
-            self.sample_members = sample_members
             self.sample_set_instances = partial(sample_set_instances, self.y_prime)
 
-        self._make_augmentations()
 
     def _make_augmentations(self) -> None:
         if self.data_config.name.lower() == "mnist":
@@ -354,8 +383,7 @@ class OKOLoader:
         self, q=None
     ) -> Tuple[UInt8orFP32[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
-        seed = np.random.randint(low=0, high=1e9, size=1)[0]
-        set_members = self.sample_members(seed, q=q)
+        set_members = self.sampler.sample_members(q)
         if self.data_config.targets == "soft":
             # create soft targets that reflect the true probability distribution of classes in a set
             sets, pair_classes, odd_classes = self.set_maker.create(set_members)
