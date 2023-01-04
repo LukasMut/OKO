@@ -76,6 +76,7 @@ def get_configs(args, **kwargs):
     optimizer_config.patience = args.patience
     optimizer_config.lr = kwargs.pop("eta")
     optimizer_config.epochs = kwargs.pop("epochs")
+    optimizer_config.clip_val = 1.0
     data_config.epochs = optimizer_config.epochs
     data_config.initial_lr = optimizer_config.lr
 

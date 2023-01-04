@@ -15,10 +15,10 @@ import jax.numpy as jnp
 import jax.random as random
 import numpy as np
 import optax
-from flax import struct
 from flax.core.frozen_dict import FrozenDict
 from flax.training import checkpoints
 from flax.training.early_stopping import EarlyStopping
+from jax.tree_util import register_pytree_node_class
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
@@ -27,6 +27,60 @@ from training.train_state import TrainState
 
 Array = jnp.ndarray
 Model = Any
+
+
+@register_pytree_node_class
+@dataclass(init=True, repr=True, frozen=True)
+class OptiMaker:
+    dataset: str
+    epochs: int
+    optimizer: str
+    lr: float
+    clip_val: float
+    momentum: float = None
+
+    def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
+        children = ()
+        aux_data = {
+            "dataset": self.dataset,
+            "epochs": self.epochs,
+            "optimizer": self.optimizer,
+            "lr": self.lr,
+            "clip_val": self.clip_val,
+            "momentum": self.momentum,
+        }
+        return (children, aux_data)
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
+    def get_optim(self, num_batches: int) -> Any:
+        opt_class = getattr(optax, self.optimizer)
+        opt_hypers = {}
+        # opt_hypers["learning_rate"] = self.optimizer_config.lr
+        if self.optimizer.lower() == "sgd":
+            opt_hypers["momentum"] = self.momentum
+            opt_hypers["nesterov"] = True
+
+        # we decrease the learning rate by a factor of 0.1 after 60% and 85% of the training
+        steps = [0.25, 0.5, 0.75] if self.dataset == "cifar10" else [0.3, 0.6, 0.9]
+        schedule = {
+            int(num_batches * self.epochs * steps[0]): 0.1,
+            int(num_batches * self.epochs * steps[1]): 0.1,
+            int(num_batches * self.epochs * steps[2]): 0.1,
+        }
+        lr_schedule = optax.piecewise_constant_schedule(
+            init_value=self.lr,
+            boundaries_and_scales=schedule,
+        )
+        # clip gradients at maximum value
+        transf = [optax.clip(self.clip_val)]
+        optimizer = optax.chain(
+            *transf,
+            opt_class(lr_schedule, **opt_hypers),
+        )
+        return optimizer
 
 
 @dataclass(init=True, repr=True)
@@ -53,6 +107,15 @@ class OKOTrainer:
         )
         # create jitted train and eval functions
         self.create_functions()
+
+        self.optimaker = OptiMaker(
+            self.data_config["name"],
+            self.optimizer_config.epochs,
+            self.optimizer_config.name,
+            self.optimizer_config.lr,
+            self.optimizer_config.clip_val,
+            self.optimizer_config.momentum,
+        )
 
         # initialize two empty lists to store train and val performances
         self.train_metrics = list()
@@ -96,39 +159,9 @@ class OKOTrainer:
             self.init_batch_stats = None
         self.state = None
 
-    def get_optim(self, train_batches: Iterator) -> Any:
-        opt_class = getattr(optax, self.optimizer_config.name)
-        opt_hypers = {}
-        # opt_hypers["learning_rate"] = self.optimizer_config.lr
-        if self.optimizer_config.name.lower() == "sgd":
-            opt_hypers["momentum"] = self.optimizer_config.momentum
-            opt_hypers["nesterov"] = True
-
-        # we decrease the learning rate by a factor of 0.1 after 60% and 85% of the training
-        if self.data_config["name"] == "cifar10":
-            steps = [0.25, 0.5, 0.75]
-        else:
-            steps = [0.3, 0.6, 0.9]
-        schedule = {
-            int(len(train_batches) * self.optimizer_config.epochs * steps[0]): 0.1,
-            int(len(train_batches) * self.optimizer_config.epochs * steps[1]): 0.1,
-            int(len(train_batches) * self.optimizer_config.epochs * steps[2]): 0.1,
-        }
-        lr_schedule = optax.piecewise_constant_schedule(
-            init_value=self.optimizer_config.lr,
-            boundaries_and_scales=schedule,
-        )
-        # clip gradients at maximum value
-        transf = [optax.clip(1.0)]
-        optimizer = optax.chain(
-            *transf,
-            opt_class(lr_schedule, **opt_hypers),
-        )
-        return optimizer
-
-    def init_optim(self, train_batches: Iterator) -> None:
+    def init_optim(self, num_batches: int) -> None:
         """Initialize optimizer and training state."""
-        optimizer = self.get_optim(train_batches)
+        optimizer = self.optimaker.get_optim(num_batches)
         # initialize training state
         self.state = TrainState.create(
             apply_fn=self.model.apply,
@@ -293,7 +326,7 @@ class OKOTrainer:
     def train(
         self, train_batches: Iterator, val_batches: Iterator
     ) -> Tuple[Dict[str, Tuple[float]], int]:
-        self.init_optim(train_batches=train_batches)
+        self.init_optim(num_batches=len(train_batches))
         for epoch in tqdm(range(1, self.optimizer_config.epochs + 1), desc="Epoch"):
             train_performance = self.train_epoch(batches=train_batches, train=True)
             self.train_metrics.append(train_performance)
