@@ -314,7 +314,7 @@ class OKOLoader:
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
             self.augmentations = [self.flip_left_right]
 
-        elif self.data_config.name.lower() == "fashionmnist":
+        elif self.data_config.name.lower() == "fashion_mnist":
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
             self.flip_up_down = jax.jit(pix.random_flip_up_down)
             self.augmentations = [self.flip_left_right, self.flip_up_down]

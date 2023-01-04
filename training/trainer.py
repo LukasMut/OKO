@@ -109,7 +109,7 @@ class OKOTrainer:
         self.create_functions()
 
         self.optimaker = OptiMaker(
-            self.data_config["name"],
+            self.data_config.name,
             self.optimizer_config.epochs,
             self.optimizer_config.name,
             self.optimizer_config.lr,
