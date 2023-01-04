@@ -25,6 +25,7 @@ from typeguard import typechecked as typechecker
 FrozenDict = config_dict.FrozenConfigDict
 PRNGSequence = Any
 
+
 class UInt8orFP32(AbstractDtype):
     dtypes = ["uint8", "float32"]
 
@@ -156,12 +157,12 @@ class MakeTargets:
     def make_bimodal_targets(
         self,
         pair_classes: Int32[Array, "#batch"],
-        oko_classes: Int32[Array, "#batch"],
+        odd_classes: Int32[Array, "#batch"],
     ) -> Float32[Array, "#batch num_cls"]:
         y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_cls) * (
             self.set_card - self.num_odds
         )
-        y_o = jax.nn.one_hot(x=oko_classes, num_classes=self.num_cls)
+        y_o = jax.nn.one_hot(x=odd_classes, num_classes=self.num_cls)
         y = (y_p + y_o) / self.set_card
         return y
 
@@ -193,7 +194,6 @@ class MakeTargets:
         return y
 
 
-
 @register_pytree_node_class
 @dataclass(init=True, repr=True, frozen=True)
 class Sampler:
@@ -204,7 +204,11 @@ class Sampler:
 
     def tree_flatten(self) -> Tuple[Tuple[Int32[Array, "num_cls"]], Dict[str, Any]]:
         children = (self.classes,)
-        aux_data = {"batch_size": self.batch_size,  "num_set_classes": self.num_set_classes, "random_numbers": self.random_numbers}
+        aux_data = {
+            "batch_size": self.batch_size,
+            "num_set_classes": self.num_set_classes,
+            "random_numbers": self.random_numbers,
+        }
         return (children, aux_data)
 
     @classmethod
@@ -213,9 +217,9 @@ class Sampler:
 
     def sample_member(self, q: float, key: Array) -> Array:
         return jax.random.choice(
-                key, self.classes, shape=(self.num_set_classes,), replace=False, p=q
-            )
-    
+            key, self.classes, shape=(self.num_set_classes,), replace=False, p=q
+        )
+
     def get_key(self) -> Array:
         return jax.random.PRNGKey(next(self.random_numbers))
 
@@ -254,7 +258,12 @@ class OKOLoader:
                 self.data_config.num_sets / self.data_config.oko_batch_size
             )
             max_num = math.ceil(self.num_batches * self.data_config.epochs)
-            self.sampler = Sampler(self.classes, self.data_config.oko_batch_size, self.set_card - 1, iter(np.random.permutation(max_num)))
+            self.sampler = Sampler(
+                self.classes,
+                self.data_config.oko_batch_size,
+                self.set_card - 1,
+                iter(np.random.permutation(max_num)),
+            )
             self.set_maker = MakeSets(self.data_config.k, self.data_config.targets)
             if self.data_config.targets == "soft":
                 self.target_maker = MakeTargets(
@@ -276,8 +285,6 @@ class OKOLoader:
             self.hist = jnp.array(list(occurrences.values()))
             self.p = self.hist / self.hist.sum()
             self.temperature = 0.1
-
-    
 
     def _create_functions(self) -> None:
         @jaxtyped
@@ -301,7 +308,6 @@ class OKOLoader:
         # partially initialize functions for computational efficiency
         if self.train:
             self.sample_set_instances = partial(sample_set_instances, self.y_prime)
-
 
     def _make_augmentations(self) -> None:
         if self.data_config.name.lower() == "mnist":
