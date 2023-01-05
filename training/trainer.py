@@ -303,7 +303,7 @@ class OKOTrainer:
             del y
             batch_losses = batch_losses.at[step].set(loss)
         cls_accs = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
-        avg_batch_acc = np.mean(list(cls_accs.values()))
+        avg_batch_acc = jnp.mean(list(cls_accs.values()))
         avg_batch_loss = jnp.mean(batch_losses)
         return (avg_batch_loss, avg_batch_acc)
 
