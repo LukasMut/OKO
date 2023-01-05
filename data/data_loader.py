@@ -240,8 +240,8 @@ class OKOLoader:
     train: bool = True
 
     def __post_init__(self) -> None:
-        self.X = np.asarray(self.data[0])
-        self.y = jax.device_put(copy.deepcopy(self.data[1]))
+        self.X = np.array(self.data[0])
+        self.y = copy.deepcopy(self.data[1])
 
         # seed random number generator
         np.random.seed(self.seed)
@@ -267,7 +267,7 @@ class OKOLoader:
             self.set_maker = MakeSets(self.data_config.k, self.data_config.targets)
             if self.data_config.targets == "soft":
                 self.target_maker = MakeTargets(
-                    self.num_classes, self.set_card, self.data_config.k
+                    self.num_classes, self.data_config.k, self.set_card
                 )
             self._create_functions()
             self._make_augmentations()
@@ -327,7 +327,7 @@ class OKOLoader:
     @jaxtyped
     @typechecker
     def apply_augmentations(
-        self, batch: UInt8orFP32[Array, "#batchk h w c"]
+        self, batch: UInt8orFP32[np.ndarray, "#batchk h w c"]
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         for i, augmentation in enumerate(self.augmentations):
             if self.data_config.name.startswith("cifar") and i == 0:
@@ -341,7 +341,11 @@ class OKOLoader:
     @jaxtyped
     @typechecker
     def _normalize(
-        self, batch: UInt8orFP32[Array, "#batchk h w c"]
+        self,
+        batch: Union[
+            UInt8orFP32[Array, "#batchk h w c"],
+            UInt8orFP32[np.ndarray, "#batchk h w c"],
+        ],
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         batch = batch / self.data_config.max_pixel_value
         batch -= self.data_config.means
@@ -361,7 +365,13 @@ class OKOLoader:
     def stepping(
         self,
     ) -> Iterator[
-        Tuple[UInt8orFP32[Array, "#batch h w c"], Float32[Array, "#batch num_cls"]]
+        Tuple[
+            Union[
+                UInt8orFP32[Array, "#batch h w c"],
+                UInt8orFP32[np.ndarray, "#batchk h w c"],
+            ],
+            Float32[Array, "#batch num_cls"],
+        ]
     ]:
         """Step over the entire training data in mini-batches of size B."""
         for i in range(self.num_batches):
@@ -379,7 +389,9 @@ class OKOLoader:
                         (i + 1) * self.data_config.main_batch_size,
                     )
                 )
-            X = jax.device_put(self.X[np.asarray(subset)])
+            X = self.X[np.asarray(subset)]
+            if self.data_config.is_rgb_dataset:
+                X = self._normalize(X)
             y = self.y[np.asarray(subset)]
             yield (X, y)
 
@@ -387,7 +399,13 @@ class OKOLoader:
     @typechecker
     def sample_oko_batch(
         self, q=None
-    ) -> Tuple[UInt8orFP32[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]:
+    ) -> Tuple[
+        Union[
+            UInt8orFP32[Array, "#batchk h w c"],
+            UInt8orFP32[np.ndarray, "#batchk h w c"],
+        ],
+        Float32[Array, "#batch num_cls"],
+    ]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members(q)
         if self.data_config.targets == "soft":
@@ -399,8 +417,7 @@ class OKOLoader:
             sets, pair_classes = self.set_maker.create(set_members)
             y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
         batch_sets = self.sample_batch_instances(sets)
-        batch_sets = batch_sets.ravel()
-        X = jax.device_put(self.X[batch_sets])
+        X = self.X[batch_sets.ravel()]
         if self.data_config.apply_augmentations:
             X = self.apply_augmentations(X)
         if self.data_config.is_rgb_dataset:
@@ -419,7 +436,13 @@ class OKOLoader:
     def oko_batch_balancing(
         self,
     ) -> Iterator[
-        Tuple[UInt8orFP32[Array, "#batchk h w c"], Float32[Array, "#batch num_cls"]]
+        Tuple[
+            Union[
+                UInt8orFP32[Array, "#batchk h w c"],
+                UInt8orFP32[np.ndarray, "#batchk h w c"],
+            ],
+            Float32[Array, "#batch num_cls"],
+        ]
     ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
         q = self.smoothing() if self.data_config.sampling == "dynamic" else None

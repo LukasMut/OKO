@@ -29,8 +29,7 @@ Array = jnp.ndarray
 Model = Any
 
 
-@register_pytree_node_class
-@dataclass(init=True, repr=True, frozen=True)
+@dataclass(init=True, repr=True)
 class OptiMaker:
     dataset: str
     epochs: int
@@ -38,22 +37,6 @@ class OptiMaker:
     lr: float
     clip_val: float
     momentum: float = None
-
-    def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
-        children = ()
-        aux_data = {
-            "dataset": self.dataset,
-            "epochs": self.epochs,
-            "optimizer": self.optimizer,
-            "lr": self.lr,
-            "clip_val": self.clip_val,
-            "momentum": self.momentum,
-        }
-        return (children, aux_data)
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        return cls(*children, **aux_data)
 
     def get_optim(self, num_batches: int) -> Any:
         opt_class = getattr(optax, self.optimizer)
@@ -116,6 +99,8 @@ class OKOTrainer:
             self.optimizer_config.clip_val,
             self.optimizer_config.momentum,
         )
+
+        self.gpu_devices = jax.devices("gpu")
 
         # initialize two empty lists to store train and val performances
         self.train_metrics = list()
@@ -207,8 +192,7 @@ class OKOTrainer:
             )
             return loss, aux, grads
 
-        def train_step(model_config: FrozenDict, state, batch: Tuple[Array], rng=None):
-            X, y = batch
+        def train_step(model_config: FrozenDict, state, X: Array, y: Array, rng=None):
             loss_fn = self.init_loss_fn(state)
             # get loss, gradients for objective function, and other outputs of loss function
             if model_config["type"].lower() == "resnet":
@@ -220,14 +204,15 @@ class OKOTrainer:
                     grads=grads,
                     batch_stats=aux[1]["batch_stats"],
                 )
+                logits = aux[0]
             else:
                 if model_config["type"].lower() == "vit":
                     loss, aux, grads = partial(jit_grads_vit, loss_fn)(
                         params=state.params, X=X, y=y, rng=rng
                     )
-                    self.rng = aux[1]
+                    logits, self.rng = aux
                 else:
-                    loss, aux, grads = partial(jit_grads, loss_fn)(
+                    loss, logits, grads = partial(jit_grads, loss_fn)(
                         params=state.params, X=X, y=y
                     )
                 state = state.apply_gradients(grads=grads)
@@ -240,7 +225,7 @@ class OKOTrainer:
                 state = state.apply_gradients(grads=l2_grads)
                 loss += weight_penalty
 
-            return state, loss, aux
+            return state, loss, logits
 
         def inference(model_config, state, X: Array, rng=None) -> Array:
             if model_config["type"].lower() == "custom":
@@ -272,8 +257,7 @@ class OKOTrainer:
         self.train_step = partial(train_step, self.model_config)
         self.inference = partial(inference, self.model_config)
 
-    def eval_step(self, batch: Tuple[Array], cls_hits: Dict[int, int]):
-        X, y = batch
+    def eval_step(self, X: Array, y: Array, cls_hits: Dict[int, int]):
         logits = self.inference(self.state, X=X, rng=self.rng)
         loss = optax.softmax_cross_entropy(logits, y).mean()
         batch_hits = loss_funs.class_hits(logits, y)
@@ -281,10 +265,8 @@ class OKOTrainer:
         return loss.item(), acc, logits
 
     def compute_accuracy(
-        self, batch: Tuple[Array], aux, cls_hits: Dict[int, int]
+        self, y: Array, logits: Array, cls_hits: Dict[int, int]
     ) -> Array:
-        logits = aux[0] if isinstance(aux, tuple) else aux
-        _, y = batch
         batch_hits = loss_funs.class_hits(logits, y)
         acc = self.collect_hits(
             cls_hits=cls_hits,
@@ -305,18 +287,20 @@ class OKOTrainer:
         cls_hits = defaultdict(list)
         batch_losses = jnp.zeros(len(batches))
         for step, batch in tqdm(enumerate(batches), desc="Batch", leave=False):
+            X, y = tuple(jax.device_put(x, device=self.gpu_devices[0]) for x in batch)
             if train:
-                self.state, loss, aux = self.train_step(
-                    state=self.state, batch=batch, rng=self.rng
+                self.state, loss, logits = self.train_step(
+                    state=self.state, X=X, y=y, rng=self.rng
                 )
-                cls_hits = self.compute_accuracy(
-                    batch=batch, aux=aux, cls_hits=cls_hits
-                )
+                cls_hits = self.compute_accuracy(y=y, logits=logits, cls_hits=cls_hits)
             else:
                 loss, cls_hits, _ = self.eval_step(
-                    batch=batch,
+                    X=X,
+                    y=y,
                     cls_hits=cls_hits,
                 )
+            del X
+            del y
             batch_losses = batch_losses.at[step].set(loss)
         cls_accs = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
         avg_batch_acc = np.mean(list(cls_accs.values()))

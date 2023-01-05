@@ -36,7 +36,7 @@ def class_hits(logits: Array, targets: Array) -> Dict[int, List[int]]:
 def l2_reg(params: FrozenDict, lmbda: float = 1e-3) -> float:
     """l2 weight regularization during (triplet) pretraining."""
     # NOTE: sum(x ** 2) = ||x||_{2}^{2}
-    weight_penalty_params = jax.tree_leaves(params)
+    weight_penalty_params = jax.tree_util.tree_leaves(params)
     weight_l2 = sum(jnp.sum(x**2) for x in weight_penalty_params if x.ndim > 1)
     weight_penalty = lmbda * 0.5 * weight_l2
     return weight_penalty
