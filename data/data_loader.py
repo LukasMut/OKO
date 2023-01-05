@@ -346,7 +346,10 @@ class OKOLoader:
             UInt8orFP32[Array, "#batchk h w c"],
             UInt8orFP32[np.ndarray, "#batchk h w c"],
         ],
-    ) -> UInt8orFP32[Array, "#batchk h w c"]:
+    ) ->  Union[
+            UInt8orFP32[Array, "#batchk h w c"],
+            UInt8orFP32[np.ndarray, "#batchk h w c"],
+        ]:
         batch = batch / self.data_config.max_pixel_value
         batch -= self.data_config.means
         batch /= self.data_config.stds
