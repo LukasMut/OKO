@@ -19,7 +19,7 @@ from flax.core.frozen_dict import FrozenDict
 from flax.training import checkpoints
 from flax.training.early_stopping import EarlyStopping
 from jax.tree_util import register_pytree_node_class
-from jaxtyping import Array, Float32, PyTree
+from jaxtyping import Array, Float32, Int32, PyTree
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
@@ -178,7 +178,7 @@ class OKOTrainer:
             state: PyTree,
             X: Float32[Array, "#batchk h w c"],
             y: Float32[Array, "#batch num_cls"],
-        ):
+        ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
             (loss, (logits, stats)), grads = jax.value_and_grad(
                 loss_fun, argnums=0, has_aux=True
             )(state.params, X, y, True)
@@ -195,8 +195,13 @@ class OKOTrainer:
             state: PyTree,
             X: Float32[Array, "#batchk h w c"],
             y: Float32[Array, "#batch num_cls"],
-            rng,
-        ):
+            rng: Int32[Array, ""],
+        ) -> Tuple[
+            PyTree,
+            Float32[Array, ""],
+            Float32[Array, "#batch num_cls"],
+            Int32[Array, ""],
+        ]:
             (loss, (logits, rng)), grads = jax.value_and_grad(
                 loss_fun, argnums=0, has_aux=True
             )(state.params, X, y, rng, True)
@@ -209,7 +214,7 @@ class OKOTrainer:
             state: PyTree,
             X: Float32[Array, "#batchk h w c"],
             y: Float32[Array, "#batch num_cls"],
-        ):
+        ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
             (loss, logits), grads = jax.value_and_grad(
                 loss_fn, argnums=0, has_aux=True
             )(state.params, X, y)
@@ -222,7 +227,7 @@ class OKOTrainer:
             X: Float32[Array, "#batchk h w c"],
             y: Float32[Array, "#batch num_cls"],
             rng=None,
-        ):
+        ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
             loss_fn = self.init_loss_fn(state)
             # get loss, gradients for objective function, and other outputs of loss function
             if model_config["type"].lower() == "resnet":
@@ -245,7 +250,7 @@ class OKOTrainer:
 
         def inference(
             model_config, state: PyTree, X: Float32[Array, "#batchk h w c"], rng=None
-        ) -> Array:
+        ) -> Float32[Array, "#batch num_cls"]:
             if model_config["type"].lower() == "custom":
                 logits = loss_funs.cnn_predict(state, state.params, X, False)
             elif model_config["type"].lower() == "resnet":
@@ -264,7 +269,9 @@ class OKOTrainer:
         X: Float32[Array, "#batchk h w c"],
         y: Float32[Array, "#batch num_cls"],
         cls_hits: Dict[int, int],
-    ):
+    ) -> Tuple[
+        Float32[Array, ""], Dict[int, List[int]], Float32[Array, "#batch num_cls"]
+    ]:
         logits = self.inference(self.state, X=X, rng=self.rng)
         loss = optax.softmax_cross_entropy(logits, y).mean()
         batch_hits = loss_funs.class_hits(logits, y)
