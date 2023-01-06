@@ -19,14 +19,12 @@ from flax.core.frozen_dict import FrozenDict
 from flax.training import checkpoints
 from flax.training.early_stopping import EarlyStopping
 from jax.tree_util import register_pytree_node_class
+from jaxtyping import Array, Float32, PyTree
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
 import training.loss_funs as loss_funs
 from training.train_state import TrainState
-
-Array = jnp.ndarray
-Model = Any
 
 
 @dataclass(init=True, repr=True)
@@ -68,7 +66,7 @@ class OptiMaker:
 
 @dataclass(init=True, repr=True)
 class OKOTrainer:
-    model: Model
+    model: PyTree
     model_config: FrozenDict
     data_config: FrozenDict
     optimizer_config: FrozenDict
@@ -111,7 +109,7 @@ class OKOTrainer:
         key_i, key_j = random.split(random.PRNGKey(self.rnd_seed))
         H, W, C = self.data_config.input_dim
 
-        def get_init_batch(batch_size: int) -> Array:
+        def get_init_batch(batch_size: int) -> Float32[Array, "#batchk h w c"]:
             return random.normal(
                 key_i, shape=(batch_size * (self.data_config.k + 2), H, W, C)
             )
@@ -158,14 +156,16 @@ class OKOTrainer:
         )
 
     def create_functions(self) -> None:
-        def init_loss_fn(model_config: FrozenDict, state: Any) -> Callable:
+        def init_loss_fn(model_config: FrozenDict, state: PyTree) -> Callable:
             loss_fn = partial(
                 getattr(loss_funs, f"loss_fn_{model_config['type'].lower()}"), state
             )
             return loss_fn
 
         @partial(jax.jit, static_argnames=["lmbda"], donate_argnums=[1])
-        def apply_l2_reg(lmbda: float, state: Any) -> Tuple[Array, Any]:
+        def apply_l2_reg(
+            lmbda: float, state: PyTree
+        ) -> Tuple[PyTree, Float32[Array, ""]]:
             weight_penalty, grads = jax.value_and_grad(
                 loss_funs.l2_reg, argnums=0, has_aux=False
             )(state.params, lmbda)
@@ -173,7 +173,12 @@ class OKOTrainer:
             return state, weight_penalty
 
         @partial(jax.jit, static_argnames=["loss_fun"], donate_argnums=[1])
-        def jit_grads_resnet(loss_fun: Callable, state, X, y):
+        def jit_grads_resnet(
+            loss_fun: Callable,
+            state: PyTree,
+            X: Float32[Array, "#batchk h w c"],
+            y: Float32[Array, "#batch num_cls"],
+        ):
             (loss, (logits, stats)), grads = jax.value_and_grad(
                 loss_fun, argnums=0, has_aux=True
             )(state.params, X, y, True)
@@ -185,7 +190,13 @@ class OKOTrainer:
             return state, loss, logits
 
         @partial(jax.jit, static_argnames=["loss_fun", "rng"], donate_argnums=[1])
-        def jit_grads_vit(loss_fun: Callable, state, X, y, rng):
+        def jit_grads_vit(
+            loss_fun: Callable,
+            state: PyTree,
+            X: Float32[Array, "#batchk h w c"],
+            y: Float32[Array, "#batch num_cls"],
+            rng,
+        ):
             (loss, (logits, rng)), grads = jax.value_and_grad(
                 loss_fun, argnums=0, has_aux=True
             )(state.params, X, y, rng, True)
@@ -193,14 +204,25 @@ class OKOTrainer:
             return state, loss, logits, rng
 
         @partial(jax.jit, static_argnames=["loss_fn"], donate_argnums=[1])
-        def jit_grads(loss_fn, state, X, y):
+        def jit_grads(
+            loss_fn,
+            state: PyTree,
+            X: Float32[Array, "#batchk h w c"],
+            y: Float32[Array, "#batch num_cls"],
+        ):
             (loss, logits), grads = jax.value_and_grad(
                 loss_fn, argnums=0, has_aux=True
             )(state.params, X, y)
             state = state.apply_gradients(grads=grads)
             return state, loss, logits
 
-        def train_step(model_config: FrozenDict, state, X: Array, y: Array, rng=None):
+        def train_step(
+            model_config: FrozenDict,
+            state: PyTree,
+            X: Float32[Array, "#batchk h w c"],
+            y: Float32[Array, "#batch num_cls"],
+            rng=None,
+        ):
             loss_fn = self.init_loss_fn(state)
             # get loss, gradients for objective function, and other outputs of loss function
             if model_config["type"].lower() == "resnet":
@@ -221,29 +243,15 @@ class OKOTrainer:
                 loss += weight_penalty
             return state, loss, logits
 
-        def inference(model_config, state, X: Array, rng=None) -> Array:
+        def inference(
+            model_config, state: PyTree, X: Float32[Array, "#batchk h w c"], rng=None
+        ) -> Array:
             if model_config["type"].lower() == "custom":
-                logits = loss_funs.cnn_predict(
-                    state=state,
-                    params=state.params,
-                    X=X,
-                    train=False,
-                )
+                logits = loss_funs.cnn_predict(state, state.params, X, False)
             elif model_config["type"].lower() == "resnet":
-                logits = loss_funs.resnet_predict(
-                    state=state,
-                    params=state.params,
-                    X=X,
-                    train=False,
-                )
+                logits = loss_funs.resnet_predict(state, state.params, X, False)
             elif model_config["type"].lower() == "vit":
-                logits, _ = loss_funs.vit_predict(
-                    state=state,
-                    params=state.params,
-                    rng=rng,
-                    X=X,
-                    train=False,
-                )
+                logits, _ = loss_funs.vit_predict(state, state.params, X, rng, False)
             return logits
 
         # partially initialize functions
@@ -251,7 +259,12 @@ class OKOTrainer:
         self.train_step = partial(train_step, self.model_config)
         self.inference = partial(inference, self.model_config)
 
-    def eval_step(self, X: Array, y: Array, cls_hits: Dict[int, int]):
+    def eval_step(
+        self,
+        X: Float32[Array, "#batchk h w c"],
+        y: Float32[Array, "#batch num_cls"],
+        cls_hits: Dict[int, int],
+    ):
         logits = self.inference(self.state, X=X, rng=self.rng)
         loss = optax.softmax_cross_entropy(logits, y).mean()
         batch_hits = loss_funs.class_hits(logits, y)
@@ -259,7 +272,10 @@ class OKOTrainer:
         return loss.item(), acc, logits
 
     def compute_accuracy(
-        self, y: Array, logits: Array, cls_hits: Dict[int, int]
+        self,
+        y: Float32[Array, "#batch num_cls"],
+        logits: Float32[Array, "#batch num_cls"],
+        cls_hits: Dict[int, int],
     ) -> Array:
         batch_hits = loss_funs.class_hits(logits, y)
         acc = self.collect_hits(
@@ -297,7 +313,7 @@ class OKOTrainer:
             del y
             batch_losses = batch_losses.at[step].set(loss)
         cls_accs = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
-        avg_batch_acc = jnp.mean(list(cls_accs.values()))
+        avg_batch_acc = np.mean(list(cls_accs.values()))
         avg_batch_loss = jnp.mean(batch_losses)
         return (avg_batch_loss, avg_batch_acc)
 

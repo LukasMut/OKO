@@ -428,7 +428,7 @@ class OKOLoader:
         return (X, y)
 
     def smoothing(self) -> Array:
-        @jax.jit
+        @partial(jax.jit, static_argnames=["beta"])
         def softmax(p: Array, beta: float) -> Array:
             return jnp.exp(p / beta) / (jnp.exp(p / beta).sum())
 

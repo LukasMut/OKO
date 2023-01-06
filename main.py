@@ -36,8 +36,27 @@ class UInt8orFP32(AbstractDtype):
 
 os.environ["PYTHONIOENCODING"] = "UTF-8"
 os.environ["JAX_PLATFORM_NAME"] = "gpu"
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = 'true'
 
-tf.config.experimental.set_visible_devices([], "GPU")
+
+# NOTE: start out allocating very little memory,
+# and as the program gets run and more GPU memory is needed, 
+# the GPU memory region is extended for the TensorFlow process.
+# Memory is not released since it can lead to memory fragmentation.
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+  try:
+    # Currently, memory growth needs to be the same across GPUs
+    for gpu in gpus:
+      tf.config.experimental.set_memory_growth(gpu, True)
+    logical_gpus = tf.config.list_logical_devices('GPU')
+    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+  except RuntimeError as e:
+    # Memory growth must be set before GPUs have been initialized
+    print(e)
+
+# NOTE: uncomment line below and comment out lines above if running TensorFlow ops only on CPU
+# tf.config.experimental.set_visible_devices([], "GPU")
 
 
 def parseargs():
