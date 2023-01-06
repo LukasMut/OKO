@@ -100,7 +100,7 @@ class OKOTrainer:
             self.optimizer_config.momentum,
         )
 
-        self.gpu_devices = jax.local_devices(backend="gpu")
+        self.gpu_devices = jax.local_devices(backend="cpu")
 
         # initialize two empty lists to store train and val performances
         self.train_metrics = list()
@@ -164,67 +164,61 @@ class OKOTrainer:
             )
             return loss_fn
 
-        @partial(jax.jit, static_argnames=["lmbda"])
-        def apply_l2_reg(lmbda: float, params: Any) -> Tuple[Array, Any]:
+        @partial(jax.jit, static_argnames=["lmbda"], donate_argnums=[1])
+        def apply_l2_reg(lmbda: float, state: Any) -> Tuple[Array, Any]:
             weight_penalty, grads = jax.value_and_grad(
                 loss_funs.l2_reg, argnums=0, has_aux=False
-            )(params, lmbda)
-            return weight_penalty, grads
+            )(state.params, lmbda)
+            state = state.apply_gradients(grads=grads)
+            return state, weight_penalty
 
-        @partial(jax.jit, static_argnames=["loss_fun"])
-        def jit_grads_resnet(loss_fun: Callable, params, X, y):
-            (loss, aux), grads = jax.value_and_grad(loss_fun, argnums=0, has_aux=True)(
-                params, X, y, True
+        @partial(jax.jit, static_argnames=["loss_fun"], donate_argnums=[1])
+        def jit_grads_resnet(loss_fun: Callable, state, X, y):
+            (loss, (logits, stats)), grads = jax.value_and_grad(
+                loss_fun, argnums=0, has_aux=True
+            )(state.params, X, y, True)
+            # update parameters and batch statistics
+            state = state.apply_gradients(
+                grads=grads,
+                batch_stats=stats["batch_stats"],
             )
-            return loss, aux, grads
+            return state, loss, logits
 
-        @partial(jax.jit, static_argnames=["loss_fun", "rng"])
-        def jit_grads_vit(loss_fun: Callable, params, X, y, rng):
-            (loss, aux), grads = jax.value_and_grad(loss_fun, argnums=0, has_aux=True)(
-                params, X, y, rng, True
-            )
-            return loss, aux, grads
+        @partial(jax.jit, static_argnames=["loss_fun", "rng"], donate_argnums=[1])
+        def jit_grads_vit(loss_fun: Callable, state, X, y, rng):
+            (loss, (logits, rng)), grads = jax.value_and_grad(
+                loss_fun, argnums=0, has_aux=True
+            )(state.params, X, y, rng, True)
+            state = state.apply_gradients(grads=grads)
+            return state, loss, logits, rng
 
-        @partial(jax.jit, static_argnames=["loss_fn"])
-        def jit_grads(loss_fn, params, X, y):
-            (loss, aux), grads = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)(
-                params, X, y
-            )
-            return loss, aux, grads
+        @partial(jax.jit, static_argnames=["loss_fn"], donate_argnums=[1])
+        def jit_grads(loss_fn, state, X, y):
+            (loss, logits), grads = jax.value_and_grad(
+                loss_fn, argnums=0, has_aux=True
+            )(state.params, X, y)
+            state = state.apply_gradients(grads=grads)
+            return state, loss, logits
 
         def train_step(model_config: FrozenDict, state, X: Array, y: Array, rng=None):
             loss_fn = self.init_loss_fn(state)
             # get loss, gradients for objective function, and other outputs of loss function
             if model_config["type"].lower() == "resnet":
-                loss, aux, grads = partial(jit_grads_resnet, loss_fn)(
-                    params=state.params, X=X, y=y
-                )
-                # update parameters and batch statistics
-                state = state.apply_gradients(
-                    grads=grads,
-                    batch_stats=aux[1]["batch_stats"],
-                )
-                logits = aux[0]
+                state, loss, logits = partial(jit_grads_resnet, loss_fn)(state, X, y)
             else:
                 if model_config["type"].lower() == "vit":
-                    loss, aux, grads = partial(jit_grads_vit, loss_fn)(
-                        params=state.params, X=X, y=y, rng=rng
+                    state, loss, logits, rng = partial(jit_grads_vit, loss_fn)(
+                        state, X, y, rng
                     )
-                    logits, self.rng = aux
+                    self.rng = rng
                 else:
-                    loss, logits, grads = partial(jit_grads, loss_fn)(
-                        params=state.params, X=X, y=y
-                    )
-                state = state.apply_gradients(grads=grads)
-
+                    state, loss, logits = partial(jit_grads, loss_fn)(state, X, y)
             # apply a small amount of l2 regularization
             if model_config["regularization"]:
-                weight_penalty, l2_grads = partial(
+                state, weight_penalty = partial(
                     apply_l2_reg, model_config["weight_decay"]
-                )(state.params)
-                state = state.apply_gradients(grads=l2_grads)
+                )(state)
                 loss += weight_penalty
-
             return state, loss, logits
 
         def inference(model_config, state, X: Array, rng=None) -> Array:
