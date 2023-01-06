@@ -98,7 +98,7 @@ class OKOTrainer:
             self.optimizer_config.momentum,
         )
 
-        self.gpu_devices = jax.local_devices(backend="cpu")
+        self.gpu_devices = jax.local_devices(backend="gpu")
 
         # initialize two empty lists to store train and val performances
         self.train_metrics = list()
