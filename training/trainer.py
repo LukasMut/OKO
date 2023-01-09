@@ -207,7 +207,11 @@ class OKOTrainer:
             self.optimizer_config.clip_val,
             self.optimizer_config.momentum,
         )
-        self.loss = Loss(self.backbone)
+        self.loss = Loss(
+            self.backbone,
+            self.model_config.regularization,
+            self.model_config.weight_decay,
+        )
         # initialize two empty lists to store train and val performances
         self.train_metrics = list()
         self.test_metrics = list()
