@@ -100,7 +100,7 @@ class Loss:
         state = state.apply_gradients(grads=grads)
         return state, weight_penalty
 
-    @partial(jax.jit, donate_argnums=[1])
+    @partial(jax.jit, donate_argnums=[0, 1])
     def jit_grads_resnet(
         self,
         state: PyTree,
@@ -118,7 +118,7 @@ class Loss:
         )
         return state, loss, logits
 
-    @partial(jax.jit, static_argnames=["rng"], donate_argnums=[1])
+    @partial(jax.jit, static_argnames=["rng"], donate_argnums=[0, 1])
     def jit_grads_vit(
         self,
         state: PyTree,
@@ -138,7 +138,7 @@ class Loss:
         state = state.apply_gradients(grads=grads)
         return state, loss, (logits, rng)
 
-    @partial(jax.jit, donate_argnums=[1])
+    @partial(jax.jit, donate_argnums=[0, 1])
     def jit_grads_custom(
         self,
         state: PyTree,
