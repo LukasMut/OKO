@@ -351,7 +351,7 @@ def batch_inference(
     for i in range(math.ceil(X_test.shape[0] / batch_size)):
         X_i = X_test[i * batch_size : (i + 1) * batch_size]
         y_i = y_test[i * batch_size : (i + 1) * batch_size]
-        loss, cls_hits, logits = trainer.eval_step((X_i, y_i), cls_hits=cls_hits)
+        loss, cls_hits, logits = trainer.eval_step(X_i, y_i, cls_hits=cls_hits)
         losses.append(loss)
         predictions.append(logits)
     predictions = jnp.vstack(predictions)
