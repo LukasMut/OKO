@@ -190,9 +190,7 @@ class OKOTrainer:
     def __post_init__(self) -> None:
         self.rng_seq = hk.PRNGSequence(self.rnd_seed)
         self.rng = jax.random.PRNGKey(self.rnd_seed)
-        # freeze model config dictionary (i.e., make it immutable)
-        self.model_config = FrozenDict(self.model_config)
-        self.backbone = self.model_config["type"].lower()
+        self.backbone = self.model_config.type.lower()
         # inititalize model
         self.init_model()
         # enable logging
@@ -210,7 +208,7 @@ class OKOTrainer:
             self.optimizer_config.momentum,
         )
         self.loss = Loss(self.backbone)
-        self.gpu_devices = jax.local_devices(backend="cpu")
+        self.gpu_devices = jax.local_devices(backend="gpu")
 
         # initialize two empty lists to store train and val performances
         self.train_metrics = list()
