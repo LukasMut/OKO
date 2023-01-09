@@ -6,7 +6,7 @@ import pickle
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Dict, Iterator, List, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Tuple, Union
 
 import flax
 import haiku as hk
@@ -64,6 +64,119 @@ class OptiMaker:
         return optimizer
 
 
+@register_pytree_node_class
+@dataclass(init=True, repr=True, frozen=False)
+class Loss:
+    backbone: str
+    l2_reg: bool = None
+    lmbda: float = None
+
+    def __post_init__(self) -> None:
+        self.loss_fun = self.get_loss_fun()
+
+    def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
+        children = ()
+        aux_data = {"backbone": self.backbone}
+        if self.l2_reg:
+            aux_data.update({"l2_reg": self.l2_reg, "lmbda": self.lmbda})
+        return (children, aux_data)
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
+    def get_loss_fun(self) -> Callable:
+        return getattr(loss_funs, f"loss_fn_{self.backbone}")
+
+    def init_loss_fun(self, state: PyTree) -> Callable:
+        return partial(self.loss_fun, state)
+
+    @partial(jax.jit, donate_argnums=[1])
+    def apply_l2_reg(self, state: PyTree) -> Tuple[PyTree, Float32[Array, ""]]:
+        """Apply a small amount of l2 regularization on the params space, determined by lmbda."""
+        weight_penalty, grads = jax.value_and_grad(
+            loss_funs.l2_reg, argnums=0, has_aux=False
+        )(state.params, self.lmbda)
+        state = state.apply_gradients(grads=grads)
+        return state, weight_penalty
+
+    @partial(jax.jit, donate_argnums=[1])
+    def jit_grads_resnet(
+        self,
+        state: PyTree,
+        X: Float32[Array, "#batchk h w c"],
+        y: Float32[Array, "#batch num_cls"],
+    ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
+        loss_fun = self.init_loss_fun(state)
+        (loss, (logits, stats)), grads = jax.value_and_grad(
+            loss_fun, argnums=0, has_aux=True
+        )(state.params, X, y, True)
+        # update parameters and batch statistics
+        state = state.apply_gradients(
+            grads=grads,
+            batch_stats=stats["batch_stats"],
+        )
+        return state, loss, logits
+
+    @partial(jax.jit, static_argnames=["rng"], donate_argnums=[1])
+    def jit_grads_vit(
+        self,
+        state: PyTree,
+        X: Float32[Array, "#batchk h w c"],
+        y: Float32[Array, "#batch num_cls"],
+        rng: Int32[Array, ""],
+    ) -> Tuple[
+        PyTree,
+        Float32[Array, ""],
+        Float32[Array, "#batch num_cls"],
+        Int32[Array, ""],
+    ]:
+        loss_fun = self.init_loss_fun(state)
+        (loss, (logits, rng)), grads = jax.value_and_grad(
+            loss_fun, argnums=0, has_aux=True
+        )(state.params, X, y, rng, True)
+        state = state.apply_gradients(grads=grads)
+        return state, loss, (logits, rng)
+
+    @partial(jax.jit, donate_argnums=[1])
+    def jit_grads_custom(
+        self,
+        state: PyTree,
+        X: Float32[Array, "#batchk h w c"],
+        y: Float32[Array, "#batch num_cls"],
+    ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
+        loss_fun = self.init_loss_fun(state)
+        (loss, logits), grads = jax.value_and_grad(loss_fun, argnums=0, has_aux=True)(
+            state.params, X, y
+        )
+        state = state.apply_gradients(grads=grads)
+        return state, loss, logits
+
+    def update(
+        self,
+        state: PyTree,
+        X: Float32[Array, "#batchk h w c"],
+        y: Float32[Array, "#batch num_cls"],
+        rng=None,
+    ) -> Union[
+        Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]],
+        Tuple[
+            PyTree,
+            Float32[Array, ""],
+            Float32[Array, "#batch num_cls"],
+            Int32[Array, ""],
+        ],
+    ]:
+        if self.backbone == "vit":
+            state, loss, aux = self.jit_grads_vit(state, X, y, rng)
+        else:
+            state, loss, aux = getattr(self, f"jit_grads_{self.backbone}")(state, X, y)
+        if self.l2_reg:
+            state, weight_penalty = self.apply_l2_reg(state)
+            loss += weight_penalty
+        return state, loss, aux
+
+
 @dataclass(init=True, repr=True)
 class OKOTrainer:
     model: PyTree
@@ -79,15 +192,14 @@ class OKOTrainer:
         self.rng = jax.random.PRNGKey(self.rnd_seed)
         # freeze model config dictionary (i.e., make it immutable)
         self.model_config = FrozenDict(self.model_config)
+        self.backbone = self.model_config["type"].lower()
         # inititalize model
         self.init_model()
-
+        # enable logging
         self.logger = SummaryWriter(log_dir=self.dir_config.log_dir)
         self.early_stop = EarlyStopping(
             min_delta=1e-4, patience=self.optimizer_config.patience
         )
-        # create jitted train and eval functions
-        self.create_functions()
 
         self.optimaker = OptiMaker(
             self.data_config.name,
@@ -97,8 +209,8 @@ class OKOTrainer:
             self.optimizer_config.clip_val,
             self.optimizer_config.momentum,
         )
-
-        self.gpu_devices = jax.local_devices(backend="gpu")
+        self.loss = Loss(self.backbone)
+        self.gpu_devices = jax.local_devices(backend="cpu")
 
         # initialize two empty lists to store train and val performances
         self.train_metrics = list()
@@ -114,7 +226,7 @@ class OKOTrainer:
                 key_i, shape=(batch_size * (self.data_config.k + 2), H, W, C)
             )
 
-        if self.model_config["type"].lower() == "resnet":
+        if self.backbone == "resnet":
             batch = get_init_batch(self.data_config.oko_batch_size)
             variables = self.model.init(key_j, batch, train=True)
             init_params, self.init_batch_stats = (
@@ -123,7 +235,7 @@ class OKOTrainer:
             )
             setattr(self, "init_params", init_params)
         else:
-            if self.model_config["type"].lower() == "vit":
+            if self.backbone == "vit":
                 batch = get_init_batch(self.data_config.oko_batch_size)
                 self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
                 init_params = self.model.init(
@@ -155,114 +267,21 @@ class OKOTrainer:
             tx=optimizer,
         )
 
-    def create_functions(self) -> None:
-        def init_loss_fn(model_config: FrozenDict, state: PyTree) -> Callable:
-            loss_fn = partial(
-                getattr(loss_funs, f"loss_fn_{model_config['type'].lower()}"), state
-            )
-            return loss_fn
+    def train_step(
+        self,
+        state: PyTree,
+        X: Float32[Array, "#batchk h w c"],
+        y: Float32[Array, "#batch num_cls"],
+        rng=None,
+    ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
 
-        @partial(jax.jit, static_argnames=["lmbda"], donate_argnums=[1])
-        def apply_l2_reg(
-            lmbda: float, state: PyTree
-        ) -> Tuple[PyTree, Float32[Array, ""]]:
-            weight_penalty, grads = jax.value_and_grad(
-                loss_funs.l2_reg, argnums=0, has_aux=False
-            )(state.params, lmbda)
-            state = state.apply_gradients(grads=grads)
-            return state, weight_penalty
-
-        @partial(jax.jit, static_argnames=["loss_fun"], donate_argnums=[1])
-        def jit_grads_resnet(
-            loss_fun: Callable,
-            state: PyTree,
-            X: Float32[Array, "#batchk h w c"],
-            y: Float32[Array, "#batch num_cls"],
-        ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
-            (loss, (logits, stats)), grads = jax.value_and_grad(
-                loss_fun, argnums=0, has_aux=True
-            )(state.params, X, y, True)
-            # update parameters and batch statistics
-            state = state.apply_gradients(
-                grads=grads,
-                batch_stats=stats["batch_stats"],
-            )
-            return state, loss, logits
-
-        @partial(jax.jit, static_argnames=["loss_fun", "rng"], donate_argnums=[1])
-        def jit_grads_vit(
-            loss_fun: Callable,
-            state: PyTree,
-            X: Float32[Array, "#batchk h w c"],
-            y: Float32[Array, "#batch num_cls"],
-            rng: Int32[Array, ""],
-        ) -> Tuple[
-            PyTree,
-            Float32[Array, ""],
-            Float32[Array, "#batch num_cls"],
-            Int32[Array, ""],
-        ]:
-            (loss, (logits, rng)), grads = jax.value_and_grad(
-                loss_fun, argnums=0, has_aux=True
-            )(state.params, X, y, rng, True)
-            state = state.apply_gradients(grads=grads)
-            return state, loss, logits, rng
-
-        @partial(jax.jit, static_argnames=["loss_fn"], donate_argnums=[1])
-        def jit_grads(
-            loss_fn,
-            state: PyTree,
-            X: Float32[Array, "#batchk h w c"],
-            y: Float32[Array, "#batch num_cls"],
-        ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
-            (loss, logits), grads = jax.value_and_grad(
-                loss_fn, argnums=0, has_aux=True
-            )(state.params, X, y)
-            state = state.apply_gradients(grads=grads)
-            return state, loss, logits
-
-        def train_step(
-            model_config: FrozenDict,
-            state: PyTree,
-            X: Float32[Array, "#batchk h w c"],
-            y: Float32[Array, "#batch num_cls"],
-            rng=None,
-        ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
-            loss_fn = self.init_loss_fn(state)
-            # get loss, gradients for objective function, and other outputs of loss function
-            if model_config["type"].lower() == "resnet":
-                state, loss, logits = partial(jit_grads_resnet, loss_fn)(state, X, y)
-            else:
-                if model_config["type"].lower() == "vit":
-                    state, loss, logits, rng = partial(jit_grads_vit, loss_fn)(
-                        state, X, y, rng
-                    )
-                    self.rng = rng
-                else:
-                    state, loss, logits = partial(jit_grads, loss_fn)(state, X, y)
-            # apply a small amount of l2 regularization
-            if model_config["regularization"]:
-                state, weight_penalty = partial(
-                    apply_l2_reg, model_config["weight_decay"]
-                )(state)
-                loss += weight_penalty
-            return state, loss, logits
-
-        def inference(
-            model_config, state: PyTree, X: Float32[Array, "#batchk h w c"], rng=None
-        ) -> Float32[Array, "#batch num_cls"]:
-            if model_config["type"].lower() == "custom":
-                logits = loss_funs.cnn_predict(state, state.params, X, False)
-            elif model_config["type"].lower() == "resnet":
-                logits = loss_funs.resnet_predict(state, state.params, X, False)
-            elif model_config["type"].lower() == "vit":
-                logits, _ = loss_funs.vit_predict(state, state.params, X, rng, False)
-            return logits
-
-        # partially initialize functions
-        self.init_loss_fn = partial(init_loss_fn, self.model_config)
-        self.train_step = partial(train_step, self.model_config)
-        self.inference = partial(inference, self.model_config)
+        # get loss, gradients for objective function, and other outputs of loss function
+        if self.backbone == "vit":
+            state, loss, (logits, rng) = self.loss.update(state, X, y, rng)
+            self.rng = rng
+        else:
+            state, loss, logits = self.loss.update(state, X, y)
+        return state, loss, logits
 
     def eval_step(
         self,
@@ -277,6 +296,17 @@ class OKOTrainer:
         batch_hits = loss_funs.class_hits(logits, y)
         acc = self.collect_hits(cls_hits=cls_hits, batch_hits=batch_hits)
         return loss.item(), acc, logits
+
+    def inference(
+        self, state: PyTree, X: Float32[Array, "#batchk h w c"], rng=None
+    ) -> Float32[Array, "#batch num_cls"]:
+        if self.backbone == "vit":
+            logits, _ = loss_funs.vit_predict(state, state.params, X, rng, False)
+        else:
+            logits = getattr(loss_funs, f"{self.backbone}_predict")(
+                state, state.params, X, False
+            )
+        return logits
 
     def compute_accuracy(
         self,
@@ -352,6 +382,9 @@ class OKOTrainer:
                     f"Epoch: {epoch:03d}, Train Loss: {train_performance[0]:.4f}, Train Acc: {train_performance[1]:.4f}, Val Loss: {test_performance[0]:.4f}, Val Acc: {test_performance[1]:.4f}\n"
                 )
                 self.logger.flush()
+                # NOTE: periodically call "jax.clear_backends()" to clear cache
+                # This seems to prevent OOMs and / or memory leaks
+                jax.clear_backends()
 
             if epoch % self.steps == 0:
                 self.save_model(epoch=epoch)
@@ -387,7 +420,7 @@ class OKOTrainer:
 
     def save_model(self, epoch: int = 0) -> None:
         # save current model at certain training iteration
-        if self.model_config["type"].lower() == "resnet":
+        if self.backbone == "resnet":
             target = {
                 "params": self.state.params,
                 "batch_stats": self.state.batch_stats,
@@ -400,7 +433,7 @@ class OKOTrainer:
 
     def load_model(self) -> None:
         """Loade model checkpoint. Different checkpoint is used for pretrained models."""
-        if self.model_config["type"].lower() == "resnet":
+        if self.backbone == "resnet":
             state_dict = checkpoints.restore_checkpoint(
                 ckpt_dir=self.dir_config.log_dir, target=None
             )

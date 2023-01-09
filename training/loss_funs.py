@@ -34,7 +34,9 @@ def class_hits(
 
 
 @partial(jax.jit, static_argnames=["lmbda"])
-def l2_reg(params: PyTree[Float32[Array, "..."]], lmbda: float = 1e-3) -> float:
+def l2_reg(
+    params: PyTree[Float32[Array, "..."]], lmbda: float = 1e-3
+) -> Float32[Array, ""]:
     """l2 weight regularization during (triplet) pretraining."""
     # NOTE: sum(x ** 2) = ||x||_{2}^{2}
     weight_penalty_params = jax.tree_util.tree_leaves(params)
@@ -43,7 +45,7 @@ def l2_reg(params: PyTree[Float32[Array, "..."]], lmbda: float = 1e-3) -> float:
     return weight_penalty
 
 
-def cnn_predict(
+def custom_predict(
     state: PyTree,
     params: PyTree[Float32[Array, "..."]],
     X: Float32[Array, "#batchk h w c"],
@@ -89,7 +91,7 @@ def loss_fn_custom(
     X: Float32[Array, "#batchk h w c"],
     y: Float32[Array, "#batch num_cls"],
 ) -> Tuple[Array, Tuple[Array]]:
-    logits = cnn_predict(state, params, X)
+    logits = custom_predict(state, params, X)
     loss = optax.softmax_cross_entropy(logits, y).mean()
     return loss, logits
 

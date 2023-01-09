@@ -125,8 +125,7 @@ class DataPartitioner:
     @typechecker
     def partitioning(
         self,
-    ) -> Tuple[UInt8orFP32[Array, "n_prime h w c"],
-        Float32[Array, "n_prime num_cls"]]:
+    ) -> Tuple[UInt8orFP32[Array, "n_prime h w c"], Float32[Array, "n_prime num_cls"]]:
         """Get a subset with <n_samples> of the full training data, following a long tail class distribution."""
         sampled_instances, _ = self.sample_instances()
         samples = []
