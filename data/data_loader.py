@@ -36,7 +36,7 @@ class Int32or64(AbstractDtype):
 
 @register_pytree_node_class
 @dataclass(init=True, repr=True, frozen=True)
-class MakeSets:
+class SetMaker:
     num_odds: int
     target_type: str
 
@@ -134,7 +134,7 @@ class MakeSets:
 
 @register_pytree_node_class
 @dataclass(init=True, repr=True, frozen=True)
-class MakeTargets:
+class TargetMaker:
     num_cls: int
     num_odds: int
     set_card: int
@@ -264,9 +264,9 @@ class OKOLoader:
                 self.set_card - 1,
                 iter(np.random.permutation(max_num)),
             )
-            self.set_maker = MakeSets(self.data_config.k, self.data_config.targets)
+            self.set_maker = SetMaker(self.data_config.k, self.data_config.targets)
             if self.data_config.targets == "soft":
-                self.target_maker = MakeTargets(
+                self.target_maker = TargetMaker(
                     self.num_classes, self.data_config.k, self.set_card
                 )
             self._create_functions()

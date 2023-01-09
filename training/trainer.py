@@ -190,6 +190,7 @@ class OKOTrainer:
     def __post_init__(self) -> None:
         self.rng_seq = hk.PRNGSequence(self.rnd_seed)
         self.rng = jax.random.PRNGKey(self.rnd_seed)
+        self.gpu_devices = jax.local_devices(backend="gpu")
         self.backbone = self.model_config.type.lower()
         # inititalize model
         self.init_model()
@@ -198,7 +199,6 @@ class OKOTrainer:
         self.early_stop = EarlyStopping(
             min_delta=1e-4, patience=self.optimizer_config.patience
         )
-
         self.optimaker = OptiMaker(
             self.data_config.name,
             self.optimizer_config.epochs,
@@ -208,8 +208,6 @@ class OKOTrainer:
             self.optimizer_config.momentum,
         )
         self.loss = Loss(self.backbone)
-        self.gpu_devices = jax.local_devices(backend="gpu")
-
         # initialize two empty lists to store train and val performances
         self.train_metrics = list()
         self.test_metrics = list()
@@ -224,8 +222,9 @@ class OKOTrainer:
                 key_i, shape=(batch_size * (self.data_config.k + 2), H, W, C)
             )
 
+        batch = get_init_batch(self.data_config.oko_batch_size)
+        batch = jax.device_put(batch, device=self.gpu_devices[0])
         if self.backbone == "resnet":
-            batch = get_init_batch(self.data_config.oko_batch_size)
             variables = self.model.init(key_j, batch, train=True)
             init_params, self.init_batch_stats = (
                 variables["params"],
@@ -234,7 +233,6 @@ class OKOTrainer:
             setattr(self, "init_params", init_params)
         else:
             if self.backbone == "vit":
-                batch = get_init_batch(self.data_config.oko_batch_size)
                 self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
                 init_params = self.model.init(
                     {"params": init_rng, "dropout": dropout_init_rng},
@@ -243,7 +241,6 @@ class OKOTrainer:
                 )["params"]
                 setattr(self, "init_params", init_params)
             else:
-                batch = get_init_batch(self.data_config.oko_batch_size)
                 variables = self.model.init(key_j, batch)
                 _, init_params = variables.pop("params")
                 setattr(self, "init_params", init_params)

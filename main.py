@@ -24,7 +24,7 @@ from typeguard import typechecked as typechecker
 import models
 import utils
 from config import get_configs
-from data import OKOLoader, DataPartitioner
+from data import DataPartitioner, OKOLoader
 from training import OKOTrainer
 
 FrozenDict = config_dict.FrozenConfigDict
@@ -36,27 +36,29 @@ class UInt8orFP32(AbstractDtype):
 
 os.environ["PYTHONIOENCODING"] = "UTF-8"
 os.environ["JAX_PLATFORM_NAME"] = "gpu"
-os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = 'true'
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 
 # NOTE: start out allocating very little memory,
-# and as the program gets run and more GPU memory is needed, 
+# and as the program gets run and more GPU memory is needed,
 # the GPU memory region is extended for the TensorFlow process.
 # Memory is not released since it can lead to memory fragmentation.
-gpus = tf.config.list_physical_devices('GPU')
+gpus = tf.config.list_physical_devices("GPU")
 if gpus:
-  try:
-    # Currently, memory growth needs to be the same across GPUs
-    for gpu in gpus:
-      tf.config.experimental.set_memory_growth(gpu, True)
-    logical_gpus = tf.config.list_logical_devices('GPU')
-    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
-  except RuntimeError as e:
-    # Memory growth must be set before GPUs have been initialized
-    print(e)
+    try:
+        # Currently, memory growth needs to be the same across GPUs
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.list_logical_devices("GPU")
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        # Memory growth must be set before GPUs have been initialized
+        print(e)
 
 # NOTE: uncomment line below and comment out lines above if running TensorFlow ops only on CPU
 # tf.config.experimental.set_visible_devices([], "GPU")
+
+gpu_devices = jax.local_devices(backend="gpu")
 
 
 def parseargs():
@@ -371,17 +373,20 @@ def inference(
     batch_size: int = None,
     collect_reps: bool = False,
 ) -> None:
+    X_test = jax.device_put(X_test, device=gpu_devices[0])
+    y_test = jax.device_put(y_test, device=gpu_devices[0])
     if collect_reps:
         reps_path = os.path.join(dir_config.log_dir, "reps")
         if not os.path.exists(reps_path):
             os.makedirs(reps_path)
-        test_performance, reps, y_hat = trainer.eval_step((X_test, y_test))
+        test_performance, reps, y_hat = trainer.eval_step(X_test, y_test)
         with open(os.path.join(reps_path, "representations.npz"), "wb") as f:
             np.savez_compressed(f, reps=reps, classes=y_test, predictions=y_hat)
     else:
         try:
             loss, cls_hits, logits = trainer.eval_step(
-                (X_test, y_test),
+                X_test,
+                y_test,
                 cls_hits=defaultdict(list),
             )
             probas = jax.nn.softmax(logits)
