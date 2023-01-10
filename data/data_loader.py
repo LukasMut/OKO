@@ -61,28 +61,23 @@ class SetMaker:
 
     @jaxtyped
     @typechecker
-    def get_odd_classes(
+    def _get_odd_classes(
         self,
-        sets: Int32[np.ndarray, "#batch _"],
+        sets: Int32[np.ndarray, "#batch set_card"],
         pair_classes: Int32[np.ndarray, "#batch"],
-    ) -> Union[Int32[np.ndarray, "#batch k"], Int32[np.ndarray, "#batch"]]:
-        """Find the k odd classes per set."""
+    ) -> Union[Int32[Array, "#batch"], Int32[Array, "#batch k"]]:
+        """Find the k odd classes in each set."""
+
+        def get_odd_classes(
+            set: Int32[np.ndarray, "set_card"], pair_cls: Int32[np.ndarray, ""]
+        ) -> Int32[Array, "k"]:
+            """Each set has k odd classes."""
+            return set[jnp.where(set != pair_cls, size=self.num_odds)[0]]
+
+        odd_classes = vmap(get_odd_classes)(sets, pair_classes)
         if self.num_odds == 1:
-            # there's a single odd class in a set
-            odd_classes = np.array(
-                [
-                    set[np.where(set != sim_cls)[0][0]]
-                    for set, sim_cls in zip(sets, pair_classes)
-                ]
-            )
-        else:
-            # there are multiple odd classes in a set
-            odd_classes = np.array(
-                [
-                    set[np.where(set != sim_cls)[0]]
-                    for set, sim_cls in zip(sets, pair_classes)
-                ]
-            )
+            # if there's a single odd class each set, flatten array of odd classes
+            odd_classes = odd_classes.ravel()
         return odd_classes
 
     @staticmethod
@@ -94,24 +89,24 @@ class SetMaker:
         """Randomly choose a pair class from all k+1 classes in a set with k+1 members (each member represents an instance from a class)."""
         return np.apply_along_axis(np.random.choice, axis=1, arr=members)
 
-    # @jaxtyped
-    # @typechecker
-    def create(
+    @jaxtyped
+    @typechecker
+    def _make_sets(
         self, members: Int32[Array, "#batch _"]
     ) -> Union[
         Tuple[
-            Int32[np.ndarray, "#batch _"],
-            Int32[np.ndarray, "#batch 2"],
+            Int32[np.ndarray, "#batch set_card"],
             Int32[np.ndarray, "#batch"],
+            Int32[Array, "#batch"],
         ],
         Tuple[
-            Int32[np.ndarray, "#batch _"],
-            Int32[np.ndarray, "#batch 2"],
-            Int32[np.ndarray, "#batch k"],
+            Int32[np.ndarray, "#batch set_card"],
+            Int32[np.ndarray, "#batch"],
+            Int32[Array, "#batch k"],
         ],
         Tuple[
-            Int32[np.ndarray, "#batch _"],
-            Int32[np.ndarray, "#batch 2"],
+            Int32[np.ndarray, "#batch set_card"],
+            Int32[np.ndarray, "#batch"],
         ],
     ]:
         pair_classes = self.choose_pair_classes(members)
@@ -123,7 +118,7 @@ class SetMaker:
             )
             sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
             if self.target_type == "soft":
-                odd_classes = self.get_odd_classes(sets, pair_classes)
+                odd_classes = self._get_odd_classes(sets, pair_classes)
                 return sets, pair_classes, odd_classes
         else:
             # pair learning (i.e., set cardinality = 2)
@@ -358,8 +353,8 @@ class OKOLoader:
     @jaxtyped
     @typechecker
     def sample_batch_instances(
-        self, sets: Int32[np.ndarray, "#batch k"]
-    ) -> Int32[np.ndarray, "#batch k"]:
+        self, sets: Int32[np.ndarray, "#batch set_card"]
+    ) -> Int32[np.ndarray, "#batch set_card"]:
         """Sample unique instances/indices from the classes in each set."""
         return np.apply_along_axis(self.sample_set_instances, arr=sets, axis=1)
 
@@ -413,11 +408,11 @@ class OKOLoader:
         set_members = self.sampler.sample_members(q)
         if self.data_config.targets == "soft":
             # create soft targets that reflect the true probability distribution of classes in a set
-            sets, pair_classes, odd_classes = self.set_maker.create(set_members)
+            sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
             y = self.target_maker._make_targets(pair_classes, odd_classes)
         else:
             # create "hard" targets with a point mass at the pair class
-            sets, pair_classes = self.set_maker.create(set_members)
+            sets, pair_classes = self.set_maker._make_sets(set_members)
             y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
