@@ -61,7 +61,7 @@ class SetMaker:
 
     @jaxtyped
     @typechecker
-    def _get_odd_classes(
+    def vget_odd_classes(
         self,
         sets: Int32[np.ndarray, "#batch set_card"],
         pair_classes: Int32[np.ndarray, "#batch"],
@@ -118,7 +118,7 @@ class SetMaker:
             )
             sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
             if self.target_type == "soft":
-                odd_classes = self._get_odd_classes(sets, pair_classes)
+                odd_classes = self.vget_odd_classes(sets, pair_classes)
                 return sets, pair_classes, odd_classes
         else:
             # pair learning (i.e., set cardinality = 2)
