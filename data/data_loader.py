@@ -61,7 +61,9 @@ class SetMaker:
 
     @jaxtyped
     @typechecker
-    def get_odd_classes(self, set: Int32[Array, "set_card"], pair_cls: Int32[Array, ""]) -> Int32[Array, "k"]:
+    def get_odd_classes(
+        self, set: Int32[Array, "set_card"], pair_cls: Int32[Array, ""]
+    ) -> Int32[Array, "k"]:
         """Each set has k odd classes."""
         return set[jnp.where(set != pair_cls, size=self.num_odds)[0]]
 
