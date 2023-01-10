@@ -61,22 +61,21 @@ class SetMaker:
 
     @jaxtyped
     @typechecker
+    def get_odd_classes(self, set: Int32[Array, "set_card"], pair_cls: Int32[Array, ""]) -> Int32[Array, "k"]:
+        """Each set has k odd classes."""
+        return set[jnp.where(set != pair_cls, size=self.num_odds)[0]]
+
+    @jaxtyped
+    @typechecker
     def vget_odd_classes(
         self,
         sets: Int32[np.ndarray, "#batch set_card"],
         pair_classes: Int32[np.ndarray, "#batch"],
     ) -> Union[Int32[Array, "#batch"], Int32[Array, "#batch k"]]:
         """Find the k odd classes in each set."""
-
-        def get_odd_classes(
-            set: Int32[np.ndarray, "set_card"], pair_cls: Int32[np.ndarray, ""]
-        ) -> Int32[Array, "k"]:
-            """Each set has k odd classes."""
-            return set[jnp.where(set != pair_cls, size=self.num_odds)[0]]
-
-        odd_classes = vmap(get_odd_classes)(sets, pair_classes)
+        odd_classes = vmap(self.get_odd_classes)(sets, pair_classes)
         if self.num_odds == 1:
-            # if there's a single odd class each set, flatten array of odd classes
+            # if there's a single odd class in each set, flatten array of odd classes
             odd_classes = odd_classes.ravel()
         return odd_classes
 
