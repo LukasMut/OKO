@@ -74,10 +74,10 @@ class SetMaker:
         sets: Int32[np.ndarray, "#batch set_card"],
         pair_classes: Int32[np.ndarray, "#batch"],
     ) -> Union[Int32[Array, "#batch"], Int32[Array, "#batch k"]]:
-        """Find the k odd classes in each set."""
+        """Get the k odd classes for a batch of sets."""
         odd_classes = vmap(self.get_odd_classes)(sets, pair_classes)
         if self.num_odds == 1:
-            # if there's a single odd class in each set, flatten array of odd classes
+            # if there's a single odd class in each set, flatten array
             odd_classes = odd_classes.ravel()
         return odd_classes
 
