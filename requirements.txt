@@ -15,6 +15,7 @@ optax==0.1.4
 jaxlib==0.4.1
 tensorflow==2.9.1
 tqdm==4.64.*
+jaxtyping==0.2.7
 ml_collections
 einops
 jupyterlab

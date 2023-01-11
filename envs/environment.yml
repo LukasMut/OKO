@@ -26,6 +26,7 @@ dependencies:
    - dm-pix==0.3.4
    - dm-haiku==0.0.9
    - tqdm==4.64.*
+   - jaxtyping==0.2.7 
    - ml_collections
    - einops
    - codecov
