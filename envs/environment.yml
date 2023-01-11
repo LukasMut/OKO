@@ -20,11 +20,11 @@ dependencies:
  - pip:
    - tensorflow==2.9.1
    - tensorflow_datasets==4.7.*
-   - jaxlib==0.3.10
-   - flax==0.5.*
-   - optax==0.1.2
+   - jaxlib==0.4.1
+   - flax==0.6.3
+   - optax==0.1.4
    - dm-pix==0.3.4
-   - dm-haiku==0.0.*
+   - dm-haiku==0.0.9
    - tqdm==4.64.*
    - ml_collections
    - einops
