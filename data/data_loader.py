@@ -408,7 +408,7 @@ class OKOLoader:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members(q)
         if self.data_config.targets == "soft":
-            # create soft targets that reflect the true probability distribution of classes in a set
+            # create "soft" targets that reflect the true probability distribution of the classes in a set
             sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
             y = self.target_maker._make_targets(pair_classes, odd_classes)
         else:
