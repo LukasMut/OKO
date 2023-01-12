@@ -292,7 +292,9 @@ class OKOTrainer:
     ]:
         logits = self.inference(self.state, X=X, rng=self.rng)
         loss = optax.softmax_cross_entropy(logits, y).mean()
-        batch_hits = loss_funs.class_hits(logits, y)
+        batch_hits = loss_funs.class_hits(
+            logits=logits, targets=y, target_type=self.data_config.targets
+        )
         acc = self.collect_hits(cls_hits=cls_hits, batch_hits=batch_hits)
         return loss.item(), acc, logits
 
@@ -313,7 +315,9 @@ class OKOTrainer:
         logits: Float32[Array, "#batch num_cls"],
         cls_hits: Dict[int, int],
     ) -> Array:
-        batch_hits = loss_funs.class_hits(logits, y)
+        batch_hits = loss_funs.class_hits(
+            logits=logits, targets=y, target_type=self.data_config.targets
+        )
         acc = self.collect_hits(
             cls_hits=cls_hits,
             batch_hits=batch_hits,

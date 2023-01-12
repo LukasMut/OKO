@@ -22,12 +22,17 @@ def accuracy(
 
 
 def class_hits(
-    logits: Float32[Array, "#batch num_cls"], targets: Float32[Array, "#batch num_cls"]
+    logits: Float32[Array, "#batch num_cls"],
+    targets: Float32[Array, "#batch num_cls"],
+    target_type: str,
 ) -> Dict[int, List[int]]:
     """Compute the per-class accuracy for imbalanced datasets."""
     y_hat = logits.argmax(axis=-1)
     cls_hits = defaultdict(list)
-    y = jnp.nonzero(targets, size=targets.shape[0])[-1]
+    if target_type == "soft":
+        y = targets.argmax(axis=-1)
+    else:
+        y = jnp.nonzero(targets, size=targets.shape[0])[-1]
     for i, y_i in enumerate(y):
         cls_hits[y_i.item()].append(1 if y_i == y_hat[i] else 0)
     return cls_hits
