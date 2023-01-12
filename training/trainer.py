@@ -177,7 +177,8 @@ class Loss:
         return state, loss, aux
 
 
-@dataclass(init=True, repr=True)
+@register_pytree_node_class
+@dataclass(init=True, repr=True, frozen=False)
 class OKOTrainer:
     model: PyTree
     model_config: FrozenDict
@@ -215,6 +216,23 @@ class OKOTrainer:
         # initialize two empty lists to store train and val performances
         self.train_metrics = list()
         self.test_metrics = list()
+
+    def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
+        children = ()
+        aux_data = {
+            "model": self.model,
+            "model_config": self.model_config,
+            "data_config": self.data_config,
+            "optimizer_config": self.optimizer_config,
+            "dir_config": self.dir_config,
+            "steps": self.steps,
+            "rnd_seed": self.rnd_seed,
+        }
+        return (children, aux_data)
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
 
     def init_model(self) -> None:
         """Initialise parameters (i.e., weights and biases) of neural network."""
@@ -290,7 +308,7 @@ class OKOTrainer:
     ) -> Tuple[
         Float32[Array, ""], Dict[int, List[int]], Float32[Array, "#batch num_cls"]
     ]:
-        logits = self.inference(self.state, X=X, rng=self.rng)
+        logits = self.inference(self.state, X, self.backbone, self.rng)
         loss = optax.softmax_cross_entropy(logits, y).mean()
         batch_hits = loss_funs.class_hits(
             logits=logits, targets=y, target_type=self.data_config.targets
@@ -298,13 +316,14 @@ class OKOTrainer:
         acc = self.collect_hits(cls_hits=cls_hits, batch_hits=batch_hits)
         return loss.item(), acc, logits
 
+    @partial(jax.jit, static_argnames=["backbone"])
     def inference(
-        self, state: PyTree, X: Float32[Array, "#batchk h w c"], rng=None
+        self, state: PyTree, X: Float32[Array, "#batchk h w c"], backbone: str, rng=None
     ) -> Float32[Array, "#batch num_cls"]:
-        if self.backbone == "vit":
+        if backbone == "vit":
             logits, _ = loss_funs.vit_predict(state, state.params, X, rng, False)
         else:
-            logits = getattr(loss_funs, f"{self.backbone}_predict")(
+            logits = getattr(loss_funs, f"{backbone}_predict")(
                 state, state.params, X, False
             )
         return logits
