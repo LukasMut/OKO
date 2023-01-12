@@ -60,9 +60,9 @@ def get_configs(args, **kwargs):
             model_config.weight_decay = 1e-1
         else:
             if data_config.is_rgb_dataset:
-                model_config.weight_decay = 1e-2
-            else:
                 model_config.weight_decay = 1e-3
+            else:
+                model_config.weight_decay = 1e-4
     else:
         model_config.weight_decay = None
     model_config.n_classes = args.n_classes
