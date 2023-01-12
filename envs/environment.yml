@@ -7,15 +7,15 @@ dependencies:
  - python=3.9
  - numpy=1.19.*
  - ftfy=5.8
- - pandas=1.0.*
+ - pandas=1.5.2
  - scikit-learn=0.24.*
  - pytorch=1.12.*
  - numba=0.54.*
  - matplotlib=3.2.*
  - seaborn=0.11.*
+ - scipy=1.10.0
  - jupyterlab
  - regex
- - scipy
  - pip
  - pip:
    - tensorflow==2.9.1
@@ -28,6 +28,8 @@ dependencies:
    - tqdm==4.64.*
    - jaxtyping==0.2.7 
    - ml_collections
+   - black
+   - pyflakes
    - einops
    - codecov
    - pep8
