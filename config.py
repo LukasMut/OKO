@@ -57,9 +57,12 @@ def get_configs(args, **kwargs):
     model_config.regularization = args.regularization
     if args.regularization:
         if args.network.lower().startswith("resnet"):
-            model_config.weight_decay = 1e-3
+            model_config.weight_decay = 1e-1
         else:
-            model_config.weight_decay = 1e-4
+            if data_config.is_rgb_dataset:
+                model_config.weight_decay = 1e-2
+            else:
+                model_config.weight_decay = 1e-3
     else:
         model_config.weight_decay = None
     model_config.n_classes = args.n_classes
