@@ -60,6 +60,8 @@ def get_configs(args, **kwargs):
             model_config.weight_decay = 1e-3
         else:
             model_config.weight_decay = 1e-4
+    else:
+        model_config.weight_decay = None
     model_config.n_classes = args.n_classes
 
     if data_config.k == 0:
@@ -83,6 +85,8 @@ def get_configs(args, **kwargs):
     if optimizer_config.name.lower() == "sgd":
         # add momentum param if optim is sgd
         optimizer_config.momentum = 0.9
+    else:
+        optimizer_config.momentum = None
 
     # make config dicts immutable (same type as model param dicts)
     freeze = lambda cfg: config_dict.FrozenConfigDict(cfg)

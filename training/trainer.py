@@ -6,7 +6,7 @@ import pickle
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Dict, Iterator, List, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import flax
 import haiku as hk
@@ -34,7 +34,7 @@ class OptiMaker:
     optimizer: str
     lr: float
     clip_val: float
-    momentum: float = None
+    momentum: Optional[float] = None
 
     def get_optim(self, num_batches: int) -> Any:
         opt_class = getattr(optax, self.optimizer)
@@ -68,8 +68,8 @@ class OptiMaker:
 @dataclass(init=True, repr=True, frozen=False)
 class Loss:
     backbone: str
-    l2_reg: bool = None
-    lmbda: float = None
+    l2_reg: Optional[bool] = None
+    lmbda: Optional[float] = None
 
     def __post_init__(self) -> None:
         self.loss_fun = self.get_loss_fun()
