@@ -195,7 +195,7 @@ class OKOTrainer:
     def __post_init__(self) -> None:
         self.rng_seq = hk.PRNGSequence(self.rnd_seed)
         self.rng = jax.random.PRNGKey(self.rnd_seed)
-        self.gpu_devices = jax.local_devices(backend="cpu")
+        self.gpu_devices = jax.local_devices(backend="gpu")
         self.backbone = self.model_config.type.lower()
         # inititalize model
         self.init_model()
