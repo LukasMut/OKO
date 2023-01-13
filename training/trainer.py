@@ -148,7 +148,10 @@ class Loss:
     ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
         loss_fun = self.init_loss_fun(state)
         (loss, logits), grads = jax.value_and_grad(loss_fun, argnums=0, has_aux=True)(
-            state.params, X, y, self.target_type,
+            state.params,
+            X,
+            y,
+            self.target_type,
         )
         state = state.apply_gradients(grads=grads)
         return state, loss, logits
