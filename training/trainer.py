@@ -119,7 +119,7 @@ class Loss:
         )
         return state, loss, logits
 
-    @partial(jax.jit, static_argnames=["rng"], donate_argnums=[0, 1])
+    @partial(jax.jit, donate_argnums=[0, 1, 4])
     def jit_grads_vit(
         self,
         state: PyTree,
@@ -195,7 +195,7 @@ class OKOTrainer:
     def __post_init__(self) -> None:
         self.rng_seq = hk.PRNGSequence(self.rnd_seed)
         self.rng = jax.random.PRNGKey(self.rnd_seed)
-        self.gpu_devices = jax.local_devices(backend="gpu")
+        self.gpu_devices = jax.local_devices(backend="cpu")
         self.backbone = self.model_config.type.lower()
         # inititalize model
         self.init_model()
