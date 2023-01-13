@@ -68,6 +68,7 @@ class OptiMaker:
 @dataclass(init=True, repr=True, frozen=False)
 class Loss:
     backbone: str
+    target_type: str
     l2_reg: Optional[bool] = None
     lmbda: Optional[float] = None
 
@@ -76,7 +77,7 @@ class Loss:
 
     def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
         children = ()
-        aux_data = {"backbone": self.backbone}
+        aux_data = {"backbone": self.backbone, "target_type": self.target_type}
         if self.l2_reg:
             aux_data.update({"l2_reg": self.l2_reg, "lmbda": self.lmbda})
         return (children, aux_data)
@@ -110,7 +111,7 @@ class Loss:
         loss_fun = self.init_loss_fun(state)
         (loss, (logits, stats)), grads = jax.value_and_grad(
             loss_fun, argnums=0, has_aux=True
-        )(state.params, X, y, True)
+        )(state.params, X, y, self.target_type, True)
         # update parameters and batch statistics
         state = state.apply_gradients(
             grads=grads,
@@ -134,7 +135,7 @@ class Loss:
         loss_fun = self.init_loss_fun(state)
         (loss, (logits, rng)), grads = jax.value_and_grad(
             loss_fun, argnums=0, has_aux=True
-        )(state.params, X, y, rng, True)
+        )(state.params, X, y, self.target_type, rng, True)
         state = state.apply_gradients(grads=grads)
         return state, loss, (logits, rng)
 
@@ -147,7 +148,7 @@ class Loss:
     ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
         loss_fun = self.init_loss_fun(state)
         (loss, logits), grads = jax.value_and_grad(loss_fun, argnums=0, has_aux=True)(
-            state.params, X, y
+            state.params, X, y, self.target_type,
         )
         state = state.apply_gradients(grads=grads)
         return state, loss, logits
@@ -210,6 +211,7 @@ class OKOTrainer:
         )
         self.loss = Loss(
             self.backbone,
+            self.data_config.targets,
             self.model_config.regularization,
             self.model_config.weight_decay,
         )

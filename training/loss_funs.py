@@ -2,14 +2,73 @@
 # -*- coding: utf-8 -*
 
 from collections import defaultdict
+from dataclasses import dataclass
 from functools import partial
-from typing import Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Tuple, Union
 
 import jax
 import jax.numpy as jnp
 import optax
 from jax import random
+from jax.tree_util import register_pytree_node_class
 from jaxtyping import Array, Float32, PyTree
+
+
+@register_pytree_node_class
+@dataclass(init=True, repr=True, frozen=True)
+class KL_Div:
+    type: str
+
+    def tree_flatten(self) -> Tuple[tuple, Dict[str, str]]:
+        children = ()
+        aux_data = {"type": self.type}
+        return (children, aux_data)
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children, **aux_data)
+
+    @staticmethod
+    def entropy(targets: Float32[Array, "#batch num_cls"]) -> Float32[Array, "#batch"]:
+        return jnp.sum(jnp.where(targets == 0, 0, targets * jnp.log(targets)), axis=-1)
+
+    @staticmethod
+    def cross_entropy(
+        targets: Float32[Array, "#batch num_cls"],
+        log_probs: Float32[Array, "#batch num_cls"],
+    ) -> Float32[Array, "#batch"]:
+        return jnp.sum(targets * log_probs, axis=-1)
+
+    @jax.jit
+    def standard_kld(
+        self,
+        targets: Float32[Array, "#batch num_cls"],
+        log_probs: Float32[Array, "#batch num_cls"],
+    ) -> Float32[Array, "#batch"]:
+        return self.entropy(targets) - self.cross_entropy(targets, log_probs)
+
+    @jax.jit
+    def convex_kld(
+        self,
+        targets: Float32[Array, "#batch num_cls"],
+        log_probs: Float32[Array, "#batch num_cls"],
+    ) -> Float32[Array, "#batch"]:
+        return (
+            self.entropy(targets)
+            - self.cross_entropy(targets, log_probs)
+            - targets
+            + jnp.exp(log_probs)
+        )
+
+    def kl_divergence(self) -> Callable:
+        return getattr(self, f"{self.type}_kld")
+
+    def __call__(
+        self,
+        targets: Float32[Array, "#batch num_cls"],
+        log_probs: Float32[Array, "#batch num_cls"],
+    ) -> Float32[Array, "#batch"]:
+        return self.kl_divergence(targets, log_probs)
 
 
 @jax.jit
@@ -19,6 +78,16 @@ def accuracy(
     return jnp.mean(
         logits.argmax(axis=1) == jnp.nonzero(targets, size=targets.shape[0])[-1]
     )
+
+
+@jax.jit
+def kl_divergence(
+    targets: Float32[Array, "#batch num_cls"],
+    log_probs: Float32[Array, "#batch num_cls"],
+) -> Float32[Array, "#batch"]:
+    kld = targets * (jnp.where(targets == 0, 0, jnp.log(targets)) - log_probs)
+    kld = kld - targets + jnp.exp(log_probs)
+    return jnp.sum(kld, axis=-1)
 
 
 def class_hits(
@@ -95,9 +164,14 @@ def loss_fn_custom(
     params: PyTree[Float32[Array, "..."]],
     X: Float32[Array, "#batchk h w c"],
     y: Float32[Array, "#batch num_cls"],
+    target_type: str,
 ) -> Tuple[Array, Tuple[Array]]:
     logits = custom_predict(state, params, X)
-    loss = optax.softmax_cross_entropy(logits, y).mean()
+    if target_type == "soft":
+        log_probs = jax.nn.log_softmax(logits, axis=-1)
+        loss = kl_divergence(y, log_probs).mean()
+    else:
+        loss = optax.softmax_cross_entropy(logits, y).mean()
     return loss, logits
 
 
@@ -106,10 +180,15 @@ def loss_fn_resnet(
     params: PyTree[Float32[Array, "..."]],
     X: Float32[Array, "#batchk h w c"],
     y: Float32[Array, "#batch num_cls"],
+    target_type: str,
     train: bool = True,
 ) -> Tuple[Array, Tuple[Array]]:
     logits, new_state = resnet_predict(state, params, X, train)
-    loss = optax.softmax_cross_entropy(logits, y).mean()
+    if target_type == "soft":
+        log_probs = jax.nn.log_softmax(logits, axis=-1)
+        loss = kl_divergence(y, log_probs).mean()
+    else:
+        loss = optax.softmax_cross_entropy(logits, y).mean()
     aux = (logits, new_state)
     return loss, aux
 
@@ -119,10 +198,15 @@ def loss_fn_vit(
     params: PyTree[Float32[Array, "..."]],
     X: Float32[Array, "#batchk h w c"],
     y: Float32[Array, "#batch num_cls"],
+    target_type: str,
     rng=None,
     train: bool = True,
 ) -> Tuple[Array, Tuple[Array]]:
     logits, rng = vit_predict(state, params, X, rng, train)
-    loss = optax.softmax_cross_entropy(logits, y).mean()
+    if target_type == "soft":
+        log_probs = jax.nn.log_softmax(logits, axis=-1)
+        loss = kl_divergence(y, log_probs).mean()
+    else:
+        loss = optax.softmax_cross_entropy(logits, y).mean()
     aux = (logits, rng)
     return loss, aux
