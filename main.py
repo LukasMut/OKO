@@ -409,7 +409,7 @@ def inference(
 
     
     entropies = entropy(probas)
-    avg_entropy = entropies.mean()
+    avg_entropy = entropies.mean().item()
     acc = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
     auc = roc_auc_score(
         y_true=np.asarray(y_test), y_score=np.asarray(probas), average="macro"
@@ -490,6 +490,7 @@ def make_results_df(
     )
     results_current_run["cross-entropy"] = performance["loss"]
     results_current_run["auc"] = performance["auc"]
+    results_current_run["avg_entropy"] = performance["avg_entropy"]
     results_current_run["training"] = model_config.task
     results_current_run["sampling"] = data_config.sampling
     results_current_run["weighting"] = False
@@ -546,6 +547,7 @@ def save_results(
             "avg-performance-rare-classes",
             "cross-entropy",
             "auc",
+            "avg_entropy",
             "training",
             "sampling",
             "weighting",
