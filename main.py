@@ -154,7 +154,7 @@ def parseargs():
         type=str,
         default="uniform",
         nargs="+",
-        choices=["uniform", "dynamic"],
+        choices=["uniform"],
         help="how to sample mini-batches per iteration",
     )
     aa(
