@@ -122,12 +122,8 @@ class ViT(nn.Module):
         for attn_block in self.transformer:
             x = attn_block(x, train=train)
 
-        if train:
-            # use positional encodings for training
-            cls = x[:, 1:, :].mean(axis=1)
-        else:
-            # use classification token for inference
-            cls = x[:, 0]
+        # use classification token
+        cls = x[:, 0]
 
         if self.capture_intermediates:
             self.sow("intermediates", "latent_reps")
