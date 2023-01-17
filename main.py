@@ -405,7 +405,7 @@ def inference(
             )
     
     def entropy(p: Float32[Array, "#batch num_cls"]) -> Float32[Array, "#batch"]:
-        return jnp.sum(jnp.where(p == 0, 0, p * jnp.log(p)), axis=-1)
+        return -jnp.sum(jnp.where(p == 0, 0, p * jnp.log(p)), axis=-1)
 
     
     entropies = entropy(probas)
