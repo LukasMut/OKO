@@ -211,20 +211,20 @@ class Sampler:
     def tree_unflatten(cls, aux_data, children):
         return cls(*children, **aux_data)
 
-    def sample_member(self, q: float, key: Array) -> Array:
+    def sample_member(self, key: Array) -> Array:
         return jax.random.choice(
-            key, self.classes, shape=(self.num_set_classes,), replace=False, p=q
+            key, self.classes, shape=(self.num_set_classes,), replace=False, p=None
         )
 
     def get_key(self) -> Array:
         return jax.random.PRNGKey(next(self.random_numbers))
 
     @jax.jit
-    def sample_members(self, q=None) -> Array:
+    def sample_members(self) -> Array:
         """Sample pairs of objects from the same class."""
         key = self.get_key()
         keys = jax.random.split(key, num=self.batch_size)
-        return vmap(partial(self.sample_member, q))(keys)
+        return vmap(self.sample_member)(keys)
 
 
 @dataclass(init=True, repr=True)
@@ -272,15 +272,6 @@ class OKOLoader:
                 self.X.shape[0] / self.data_config.main_batch_size
             )
             self.remainder = self.X.shape[0] % self.data_config.main_batch_size
-
-        if self.data_config.sampling == "dynamic":
-            self.y_flat = np.nonzero(self.y)[1]
-            occurrences = dict(
-                sorted(Counter(self.y_flat.tolist()).items(), key=lambda kv: kv[0])
-            )
-            self.hist = jnp.array(list(occurrences.values()))
-            self.p = self.hist / self.hist.sum()
-            self.temperature = 0.1
 
     def _create_functions(self) -> None:
         @jaxtyped
@@ -409,7 +400,7 @@ class OKOLoader:
         Float32[Array, "#batch num_cls"],
     ]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
-        set_members = self.sampler.sample_members(q)
+        set_members = self.sampler.sample_members()
         if self.data_config.targets == "soft":
             # create "soft" targets that reflect the true probability distribution of the classes in a set
             sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
@@ -426,13 +417,6 @@ class OKOLoader:
             X = self._normalize(X)
         return (X, y)
 
-    def smoothing(self) -> Array:
-        @partial(jax.jit, static_argnames=["beta"])
-        def softmax(p: Array, beta: float) -> Array:
-            return jnp.exp(p / beta) / (jnp.exp(p / beta).sum())
-
-        return partial(softmax, self.p)(self.temperature)
-
     @jaxtyped
     @typechecker
     def oko_batch_balancing(
@@ -447,12 +431,9 @@ class OKOLoader:
         ]
     ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
-        q = self.smoothing() if self.data_config.sampling == "dynamic" else None
         for _ in range(self.num_batches):
-            oko_batch = self.sample_oko_batch(q)
+            oko_batch = self.sample_oko_batch()
             yield oko_batch
-        if self.data_config.sampling == "dynamic":
-            self.temperature += 0.1
 
     def __iter__(self) -> Iterator:
         if self.train:
