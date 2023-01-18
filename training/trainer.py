@@ -29,14 +29,15 @@ from training.train_state import TrainState
 
 @dataclass(init=True, repr=True)
 class OptiMaker:
-    dataset: str
     epochs: int
     optimizer: str
     lr: float
+    warmup_epochs: int
+    steps_per_epoch: int
     clip_val: float
     momentum: Optional[float] = None
 
-    def get_optim(self, num_batches: int) -> Any:
+    def get_optim(self) -> Any:
         opt_class = getattr(optax, self.optimizer)
         opt_hypers = {}
         # opt_hypers["learning_rate"] = self.optimizer_config.lr
@@ -44,16 +45,19 @@ class OptiMaker:
             opt_hypers["momentum"] = self.momentum
             opt_hypers["nesterov"] = True
 
-        # we decrease the learning rate by a factor of 0.1 after 60% and 85% of the training
-        steps = [0.25, 0.5, 0.75] if self.dataset == "cifar10" else [0.3, 0.6, 0.9]
-        schedule = {
-            int(num_batches * self.epochs * steps[0]): 0.1,
-            int(num_batches * self.epochs * steps[1]): 0.1,
-            int(num_batches * self.epochs * steps[2]): 0.1,
-        }
-        lr_schedule = optax.piecewise_constant_schedule(
-            init_value=self.lr,
-            boundaries_and_scales=schedule,
+        # we use a warump period after which we decrease the learning rate using a cosine decay schedule
+        warmup_fn = optax.linear_schedule(
+            init_value=0.0,
+            end_value=self.lr,
+            transition_steps=self.warmup_epochs * self.steps_per_epoch,
+        )
+        cosine_epochs = max(self.epochs - self.warmup_epochs, 1)
+        cosine_fn = optax.cosine_decay_schedule(
+            init_value=self.lr, decay_steps=cosine_epochs * self.steps_per_epoch
+        )
+        lr_schedule = optax.join_schedules(
+            schedules=[warmup_fn, cosine_fn],
+            boundaries=[self.warmup_epochs * self.steps_per_epoch],
         )
         # clip gradients at maximum value
         transf = [optax.clip(self.clip_val)]
@@ -205,10 +209,11 @@ class OKOTrainer:
             min_delta=1e-4, patience=self.optimizer_config.patience
         )
         self.optimaker = OptiMaker(
-            self.data_config.name,
             self.optimizer_config.epochs,
             self.optimizer_config.name,
             self.optimizer_config.lr,
+            self.optimizer_config.warmup_epochs,
+            self.optimizer_config.steps_per_epoch,
             self.optimizer_config.clip_val,
             self.optimizer_config.momentum,
         )

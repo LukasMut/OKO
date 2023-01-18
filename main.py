@@ -148,6 +148,13 @@ def parseargs():
         default=15,
         help="Number of steps of no improvement before stopping training",
     )
+    aa(
+        "--warmup_epochs",
+        type=int,
+        default=20,
+        choices=[5, 10, 15, 20, 25, 30],
+        help="number of warmup epochs for linear schedule",
+    )
     aa("--steps", type=int, help="save intermediate parameters every <steps> epochs")
     aa(
         "--sampling",
@@ -403,18 +410,19 @@ def inference(
                 y_test=y_test,
                 batch_size=batch_size,
             )
-    
+
     def entropy(p: Float32[Array, "#batch num_cls"]) -> Float32[Array, "#batch"]:
         return -jnp.sum(jnp.where(p == 0, 0, p * jnp.log(p)), axis=-1)
 
-    
     entropies = entropy(probas)
     avg_entropy = entropies.mean().item()
     acc = {cls: np.mean(hits) for cls, hits in cls_hits.items()}
     auc = roc_auc_score(
         y_true=np.asarray(y_test), y_score=np.asarray(probas), average="macro"
     )
-    test_performance = flax.core.FrozenDict({"loss": loss, "auc": auc, "avg_entropy": avg_entropy, "accuracy": acc})
+    test_performance = flax.core.FrozenDict(
+        {"loss": loss, "auc": auc, "avg_entropy": avg_entropy, "accuracy": acc}
+    )
     train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
     cls_distribution = dict(Counter(train_labels.tolist()))
 

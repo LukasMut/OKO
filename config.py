@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import re
+import math
 
 from ml_collections import config_dict
 
@@ -81,6 +82,8 @@ def get_configs(args, **kwargs):
     optimizer_config.patience = args.patience
     optimizer_config.lr = kwargs.pop("eta")
     optimizer_config.epochs = kwargs.pop("epochs")
+    optimizer_config.warmup_epochs = args.warmup_epochs
+    optimizer_config.steps_per_epoch = math.ceil(data_config.num_sets / data_config.oko_batch_size)
     optimizer_config.clip_val = float(1)
     data_config.epochs = optimizer_config.epochs
     data_config.initial_lr = optimizer_config.lr
