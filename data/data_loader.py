@@ -8,7 +8,7 @@ import math
 import random
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Dict, Iterator, List, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import dm_pix as pix
 import haiku as hk
@@ -133,6 +133,8 @@ class TargetMaker:
     num_cls: int
     num_odds: int
     set_card: int
+    random_numbers: Optional[Iterator] = None
+    steepness: Optional[int] = None  # TODO: should we call this "energy" instead?
 
     def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
         children = ()
@@ -141,11 +143,18 @@ class TargetMaker:
             "num_odds": self.num_odds,
             "set_card": self.set_card,
         }
+        if self.random_numbers:
+            aux_data.update(
+                {"random_numbers": self.random_numbers, "steepness": self.steepness}
+            )
         return (children, aux_data)
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         return cls(*children, **aux_data)
+
+    def get_key(self) -> Array:
+        return jax.random.PRNGKey(next(self.random_numbers))
 
     @jaxtyped
     @typechecker
@@ -159,6 +168,9 @@ class TargetMaker:
         )
         y_o = jax.nn.one_hot(x=odd_classes, num_classes=self.num_cls)
         y = (y_p + y_o) / self.set_card
+        if self.random_numbers:
+            key = self.get_key()
+            y = jax.random.dirichlet(key, alpha=y * self.steepness)
         return y
 
     @jaxtyped
@@ -174,6 +186,9 @@ class TargetMaker:
         for classes in odd_classes.T:
             y += jax.nn.one_hot(x=classes, num_classes=self.num_cls)
         y /= self.set_card
+        if self.random_numbers:
+            key = self.get_key()
+            y = jax.random.dirichlet(key, alpha=y * self.steepness)
         return y
 
     @jax.jit
@@ -264,6 +279,15 @@ class OKOLoader:
                 self.target_maker = TargetMaker(
                     self.num_classes, self.data_config.k, self.set_card
                 )
+            elif self.data_config.targets == "soft_noisy":
+                self.target_maker = TargetMaker(
+                    self.num_classes,
+                    self.data_config.k,
+                    self.set_card,
+                    iter(np.random.permutation(max_num)),
+                    100,
+                )
+
             self._create_functions()
             self._make_augmentations()
         else:

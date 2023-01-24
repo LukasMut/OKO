@@ -283,7 +283,7 @@ class OKOTrainer:
 
     def init_optim(self, num_batches: int) -> None:
         """Initialize optimizer and training state."""
-        optimizer = self.optimaker.get_optim(num_batches)
+        optimizer = self.optimaker.get_optim()
         # initialize training state
         self.state = TrainState.create(
             apply_fn=self.model.apply,

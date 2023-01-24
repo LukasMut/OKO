@@ -98,7 +98,7 @@ def class_hits(
     """Compute the per-class accuracy for imbalanced datasets."""
     y_hat = logits.argmax(axis=-1)
     cls_hits = defaultdict(list)
-    if target_type == "soft":
+    if target_type.startswith("soft"):
         y = targets.argmax(axis=-1)
     else:
         y = jnp.nonzero(targets, size=targets.shape[0])[-1]
@@ -167,7 +167,7 @@ def loss_fn_custom(
     target_type: str,
 ) -> Tuple[Array, Tuple[Array]]:
     logits = custom_predict(state, params, X)
-    if target_type == "soft":
+    if target_type.startswith("soft"):
         log_probs = jax.nn.log_softmax(logits, axis=-1)
         loss = kl_divergence(y, log_probs).mean()
     else:
@@ -184,7 +184,7 @@ def loss_fn_resnet(
     train: bool = True,
 ) -> Tuple[Array, Tuple[Array]]:
     logits, new_state = resnet_predict(state, params, X, train)
-    if target_type == "soft":
+    if target_type.startswith("soft"):
         log_probs = jax.nn.log_softmax(logits, axis=-1)
         loss = kl_divergence(y, log_probs).mean()
     else:
@@ -203,7 +203,7 @@ def loss_fn_vit(
     train: bool = True,
 ) -> Tuple[Array, Tuple[Array]]:
     logits, rng = vit_predict(state, params, X, rng, train)
-    if target_type == "soft":
+    if target_type.startswith("soft"):
         log_probs = jax.nn.log_softmax(logits, axis=-1)
         loss = kl_divergence(y, log_probs).mean()
     else:

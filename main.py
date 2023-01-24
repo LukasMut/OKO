@@ -101,7 +101,7 @@ def parseargs():
         "--targets",
         type=str,
         default="hard",
-        choices=["hard", "soft"],
+        choices=["hard", "soft", "soft_noisy"],
         help="whether to use hard targets with a point mass at the pair class or soft targets that reflect the true class distribution in a set",
     )
     aa(
