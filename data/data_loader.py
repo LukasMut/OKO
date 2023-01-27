@@ -276,10 +276,12 @@ class OKOLoader:
             )
             self.set_maker = SetMaker(self.data_config.k, self.data_config.targets)
             if self.data_config.targets == "soft":
+                assert self.data_config.k > 0, '\nIf you want to use soft labels, there must be at least one odd class.\n'
                 self.target_maker = TargetMaker(
                     self.num_classes, self.data_config.k, self.set_card
                 )
             elif self.data_config.targets == "soft_noisy":
+                assert self.data_config.k > 0, '\nIf you want to use noisy soft labels, there must be at least one odd class.\n'
                 self.target_maker = TargetMaker(
                     self.num_classes,
                     self.data_config.k,
