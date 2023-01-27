@@ -69,7 +69,7 @@ def get_configs(args, **kwargs):
     model_config.n_classes = args.n_classes
 
     if data_config.k == 0:
-        model_config.task == "Pair"
+        model_config.task = "Pair"
     else:
         model_config.task = f"Odd-$k$-out ($k$={data_config.k}; {data_config.targets})"
 
