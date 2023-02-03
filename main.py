@@ -145,7 +145,7 @@ def parseargs():
     aa(
         "--patience",
         type=int,
-        default=15,
+        default=20,
         help="Number of steps of no improvement before stopping training",
     )
     aa(
