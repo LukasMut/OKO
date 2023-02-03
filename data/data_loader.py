@@ -168,9 +168,6 @@ class TargetMaker:
         )
         y_o = jax.nn.one_hot(x=odd_classes, num_classes=self.num_cls)
         y = (y_p + y_o) / self.set_card
-        if self.random_numbers:
-            key = self.get_key()
-            y = jax.random.dirichlet(key, alpha=y * self.energy)
         return y
 
     @jaxtyped
@@ -186,8 +183,6 @@ class TargetMaker:
         for classes in odd_classes.T:
             y += jax.nn.one_hot(x=classes, num_classes=self.num_cls)
         y /= self.set_card
-        if self.random_numbers:
-            y = jax.random.dirichlet(self.get_key(), alpha=y * self.energy)
         return y
 
     @jax.jit
@@ -200,6 +195,8 @@ class TargetMaker:
             y = self.make_bimodal_targets(pair_classes, odd_classes)
         else:
             y = self.make_multimodal_targets(pair_classes, odd_classes)
+        if self.random_numbers:
+            y = jax.random.dirichlet(self.get_key(), alpha=y * self.energy)
         return y
 
 
