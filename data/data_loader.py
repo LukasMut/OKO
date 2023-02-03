@@ -117,7 +117,7 @@ class SetMaker:
                 pair_classes=pair_classes,
             )
             sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
-            if self.target_type == "soft":
+            if self.target_type.startswith("soft"):
                 odd_classes = self.vget_odd_classes(sets, pair_classes)
                 return sets, pair_classes, odd_classes
         else:
@@ -134,7 +134,7 @@ class TargetMaker:
     num_odds: int
     set_card: int
     random_numbers: Optional[Iterator] = None
-    steepness: Optional[int] = None  # TODO: should we call this "energy" instead?
+    energy: Optional[int] = None
 
     def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
         children = ()
@@ -145,7 +145,7 @@ class TargetMaker:
         }
         if self.random_numbers:
             aux_data.update(
-                {"random_numbers": self.random_numbers, "steepness": self.steepness}
+                {"random_numbers": self.random_numbers, "energy": self.energy}
             )
         return (children, aux_data)
 
@@ -170,7 +170,7 @@ class TargetMaker:
         y = (y_p + y_o) / self.set_card
         if self.random_numbers:
             key = self.get_key()
-            y = jax.random.dirichlet(key, alpha=y * self.steepness)
+            y = jax.random.dirichlet(key, alpha=y * self.energy)
         return y
 
     @jaxtyped
@@ -187,8 +187,7 @@ class TargetMaker:
             y += jax.nn.one_hot(x=classes, num_classes=self.num_cls)
         y /= self.set_card
         if self.random_numbers:
-            key = self.get_key()
-            y = jax.random.dirichlet(key, alpha=y * self.steepness)
+            y = jax.random.dirichlet(self.get_key(), alpha=y * self.energy)
         return y
 
     @jax.jit
@@ -236,8 +235,7 @@ class Sampler:
     @jax.jit
     def sample_members(self) -> Array:
         """Sample pairs of objects from the same class."""
-        key = self.get_key()
-        keys = jax.random.split(key, num=self.batch_size)
+        keys = jax.random.split(self.get_key(), num=self.batch_size)
         return vmap(self.sample_member)(keys)
 
 
@@ -276,18 +274,22 @@ class OKOLoader:
             )
             self.set_maker = SetMaker(self.data_config.k, self.data_config.targets)
             if self.data_config.targets == "soft":
-                assert self.data_config.k > 0, '\nIf you want to use soft labels, there must be at least one odd class.\n'
+                assert (
+                    self.data_config.k > 0
+                ), "\nIf you want to use soft labels, there must at least be one odd class.\n"
                 self.target_maker = TargetMaker(
                     self.num_classes, self.data_config.k, self.set_card
                 )
             elif self.data_config.targets == "soft_noisy":
-                assert self.data_config.k > 0, '\nIf you want to use noisy soft labels, there must be at least one odd class.\n'
+                assert (
+                    self.data_config.k > 0
+                ), "\nIf you want to use noisy soft labels, there must at least be one odd class.\n"
                 self.target_maker = TargetMaker(
                     self.num_classes,
                     self.data_config.k,
                     self.set_card,
                     iter(np.random.permutation(max_num)),
-                    100,
+                    self.data_config.energy,
                 )
 
             self._create_functions()
@@ -426,7 +428,7 @@ class OKOLoader:
     ]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members()
-        if self.data_config.targets == "soft":
+        if self.data_config.targets.startswith("soft"):
             # create "soft" targets that reflect the true probability distribution of the classes in a set
             sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
             y = self.target_maker._make_targets(pair_classes, odd_classes)
@@ -457,8 +459,7 @@ class OKOLoader:
     ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
         for _ in range(self.num_batches):
-            oko_batch = self.sample_oko_batch()
-            yield oko_batch
+            yield self.sample_oko_batch()
 
     def __iter__(self) -> Iterator:
         if self.train:
