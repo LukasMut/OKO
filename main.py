@@ -207,7 +207,7 @@ def get_combination(
     sampling_policies: List[str],
     seeds: List[int],
 ):
-    combs = [None]
+    combs = []
     combs.extend(
         list(
             itertools.product(
@@ -227,7 +227,7 @@ def get_combination(
         )
     )
     # NOTE: for SLURM use "SLURM_ARRAY_TASK_ID"
-    return combs[int(os.environ["SGE_TASK_ID"])]
+    return combs[int(os.environ["SLURM_ARRAY_TASK_ID"])]
 
 
 def make_path(
@@ -421,7 +421,7 @@ def inference(
         y_true=np.asarray(y_test), y_score=np.asarray(probas), average="macro"
     )
     test_performance = flax.core.FrozenDict(
-        {"loss": loss, "auc": auc, "avg_entropy": avg_entropy, "accuracy": acc}
+        {"loss": loss, "auc": auc, "avg-entropy": avg_entropy, "accuracy": acc}
     )
     train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
     cls_distribution = dict(Counter(train_labels.tolist()))
@@ -498,7 +498,7 @@ def make_results_df(
     )
     results_current_run["cross-entropy"] = performance["loss"]
     results_current_run["auc"] = performance["auc"]
-    results_current_run["avg_entropy"] = performance["avg_entropy"]
+    results_current_run["avg-entropy"] = performance["avg-entropy"]
     results_current_run["training"] = model_config.task
     results_current_run["sampling"] = data_config.sampling
     results_current_run["weighting"] = False
@@ -555,7 +555,7 @@ def save_results(
             "avg-performance-rare-classes",
             "cross-entropy",
             "auc",
-            "avg_entropy",
+            "avg-entropy",
             "training",
             "sampling",
             "weighting",
