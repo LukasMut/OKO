@@ -26,6 +26,7 @@ import utils
 from config import get_configs
 from data import DataPartitioner, OKOLoader
 from training import OKOTrainer
+from tensorflow_probability.substrates import jax as tfp
 
 FrozenDict = config_dict.FrozenConfigDict
 
@@ -362,9 +363,8 @@ def batch_inference(
         losses.append(loss)
         predictions.append(logits)
     predictions = jnp.vstack(predictions)
-    probas = jax.nn.softmax(predictions)
     loss = np.mean(losses)
-    return loss, cls_hits, probas
+    return loss, cls_hits, predictions
 
 
 def inference(
@@ -404,12 +404,13 @@ def inference(
             assert isinstance(
                 batch_size, int
             ), "\nBatch size parameter required to circumvent problems with GPU VRAM.\n"
-            loss, cls_hits, probas = batch_inference(
+            loss, cls_hits, predictions = batch_inference(
                 trainer=trainer,
                 X_test=X_test,
                 y_test=y_test,
                 batch_size=batch_size,
             )
+            probas = jax.nn.softmax(predictions)
 
     def entropy(p: Float32[Array, "#batch num_cls"]) -> Float32[Array, "#batch"]:
         return -jnp.sum(jnp.where(p == 0, 0, p * jnp.log(p)), axis=-1)
@@ -420,8 +421,9 @@ def inference(
     auc = roc_auc_score(
         y_true=np.asarray(y_test), y_score=np.asarray(probas), average="macro"
     )
+    ece = tfp.stats.expected_calibration_error(num_bins=10, logits=logits, labels_true=jnp.nonzero(y_test)[-1])
     test_performance = flax.core.FrozenDict(
-        {"loss": loss, "auc": auc, "avg-entropy": avg_entropy, "accuracy": acc}
+        {"loss": loss, "auc": auc, "avg-entropy": avg_entropy, "accuracy": acc, "ece": ece.item()}
     )
     train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
     cls_distribution = dict(Counter(train_labels.tolist()))
@@ -498,6 +500,7 @@ def make_results_df(
     )
     results_current_run["cross-entropy"] = performance["loss"]
     results_current_run["auc"] = performance["auc"]
+    results_current_run["ece"] = performance["ece"]
     results_current_run["avg-entropy"] = performance["avg-entropy"]
     results_current_run["training"] = model_config.task
     results_current_run["sampling"] = data_config.sampling
@@ -555,6 +558,7 @@ def save_results(
             "avg-performance-rare-classes",
             "cross-entropy",
             "auc",
+            "ece",
             "avg-entropy",
             "training",
             "sampling",
