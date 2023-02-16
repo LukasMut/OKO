@@ -74,7 +74,8 @@ def get_configs(args, **kwargs):
         model_config.task = f"Odd-$k$-out ($k$={data_config.k}; {data_config.targets})"
 
     if data_config.targets == "soft_noisy":
-        data_config.energy = 10
+        # TODO: figure out what's the best energy value for noisy labels
+        data_config.energy = 10 
 
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
