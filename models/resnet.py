@@ -18,7 +18,7 @@ class ResNetBlock(nn.Module):
 
     filters: int
     conv: ModuleDef
-    norm: ModuleDef
+    # norm: ModuleDef
     act: Callable
     strides: Tuple[int, int] = (1, 1)
 
@@ -29,16 +29,16 @@ class ResNetBlock(nn.Module):
     ):
         residual = x
         y = self.conv(self.filters, (3, 3), self.strides)(x)
-        y = self.norm()(y)
+        # y = self.norm()(y)
         y = self.act(y)
         y = self.conv(self.filters, (3, 3))(y)
-        y = self.norm(scale_init=nn.initializers.zeros)(y)
+        # y = self.norm(scale_init=nn.initializers.zeros)(y)
 
         if residual.shape != y.shape:
             residual = self.conv(self.filters, (1, 1), self.strides, name="conv_proj")(
                 residual
             )
-            residual = self.norm(name="norm_proj")(residual)
+            # residual = self.norm(name="norm_proj")(residual)
 
         return self.act(residual + y)
 
@@ -48,7 +48,7 @@ class BottleneckResNetBlock(nn.Module):
 
     filters: int
     conv: ModuleDef
-    norm: ModuleDef
+    # norm: ModuleDef
     act: Callable
     strides: Tuple[int, int] = (1, 1)
 
@@ -56,19 +56,19 @@ class BottleneckResNetBlock(nn.Module):
     def __call__(self, x):
         residual = x
         y = self.conv(self.filters, (1, 1))(x)
-        y = self.norm()(y)
+        # y = self.norm()(y)
         y = self.act(y)
         y = self.conv(self.filters, (3, 3), self.strides)(y)
-        y = self.norm()(y)
+        # y = self.norm()(y)
         y = self.act(y)
         y = self.conv(self.filters * 4, (1, 1))(y)
-        y = self.norm(scale_init=nn.initializers.zeros)(y)
+        # y = self.norm(scale_init=nn.initializers.zeros)(y)
 
         if residual.shape != y.shape:
             residual = self.conv(
                 self.filters * 4, (1, 1), self.strides, name="conv_proj"
             )(residual)
-            residual = self.norm(name="norm_proj")(residual)
+            # residual = self.norm(name="norm_proj")(residual)
 
         return self.act(residual + y)
 
@@ -96,6 +96,7 @@ class ResNet(nn.Module):
     @nn.compact
     def __call__(self, x: Array, train: bool = True) -> Array:
         conv = partial(self.conv, use_bias=False, dtype=self.dtype)
+        """
         norm = partial(
             nn.BatchNorm,
             use_running_average=not train,
@@ -103,11 +104,11 @@ class ResNet(nn.Module):
             epsilon=1e-5,
             dtype=self.dtype,
         )
-
+        """
         x = conv(
             self.num_filters, (7, 7), (2, 2), padding=[(3, 3), (3, 3)], name="conv_init"
         )(x)
-        x = norm(name="bn_init")(x)
+        # x = norm(name="bn_init")(x)
         x = nn.relu(x)
         x = nn.max_pool(x, (3, 3), strides=(2, 2), padding="SAME")
         for i, block_size in enumerate(self.stage_sizes):
@@ -117,7 +118,7 @@ class ResNet(nn.Module):
                     self.num_filters * 2**i,
                     strides=strides,
                     conv=conv,
-                    norm=norm,
+                    # norm=norm,
                     act=self.act,
                 )(x)
         x = x.mean(axis=(1, 2))
