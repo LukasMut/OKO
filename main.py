@@ -605,8 +605,6 @@ def get_model(model_config: FrozenDict, data_config: FrozenDict):
     model_name = model_config.type + model_config.depth
     net = getattr(models, model_name)
     if model_config.type.lower() == "resnet":
-        from models import resnet_jax
-        net = getattr(resnet_jax, model_name)
         model = create_model(
             model_cls=net, model_config=model_config, data_config=data_config
         )
