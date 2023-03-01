@@ -200,7 +200,7 @@ class OKOTrainer:
         self.rng_seq = hk.PRNGSequence(self.rnd_seed)
         self.rng = jax.random.PRNGKey(self.rnd_seed)
         self.gpu_devices = jax.local_devices(backend="gpu")
-        self.backbone = "custom" # self.model_config.type.lower()
+        self.backbone = self.model_config.type.lower()
         # inititalize model
         self.init_model()
         # enable logging
@@ -256,7 +256,7 @@ class OKOTrainer:
 
         batch = get_init_batch(self.data_config.oko_batch_size)
         batch = jax.device_put(batch, device=self.gpu_devices[0])
-        """
+        
         if self.backbone == "resnet":
             variables = self.model.init(key_j, batch, train=True)
             init_params, self.init_batch_stats = (
@@ -265,21 +265,19 @@ class OKOTrainer:
             )
             setattr(self, "init_params", init_params)
         else:
-        """
-        if self.backbone == "vit":
-            self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
-            init_params = self.model.init(
-                {"params": init_rng, "dropout": dropout_init_rng},
-                batch,
-                train=True,
-            )["params"]
-            setattr(self, "init_params", init_params)
-        else:
-            variables = self.model.init(key_j, batch)
-            _, init_params = variables.pop("params")
-            setattr(self, "init_params", init_params)
-            del variables
-
+            if self.backbone == "vit":
+                self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
+                init_params = self.model.init(
+                    {"params": init_rng, "dropout": dropout_init_rng},
+                    batch,
+                    train=True,
+                )["params"]
+                setattr(self, "init_params", init_params)
+            else:
+                variables = self.model.init(key_j, batch)
+                _, init_params = variables.pop("params")
+                setattr(self, "init_params", init_params)
+                del variables
             self.init_batch_stats = None
         self.state = None
 
