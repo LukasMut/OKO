@@ -1,3 +1,5 @@
+# ResNet implementation taken from https://github.com/n2cholas/jax-resnet and slightly adapted
+
 from functools import partial
 from typing import Callable, List, Optional, Sequence, Tuple
 
