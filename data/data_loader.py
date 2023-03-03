@@ -343,9 +343,13 @@ class OKOLoader:
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         for i, augmentation in enumerate(self.augmentations):
             if self.data_config.name.startswith("cifar") and i == 0:
-                augmented_batch = vmap(lambda x: jnp.pad(x, pad_width=4, mode="edge"))(batch)
+                augmented_batch = vmap(lambda x: jnp.pad(x, pad_width=4, mode="edge"))(
+                    batch
+                )
                 batch = augmentation(
-                    key=next(self.rng_seq), image=augmented_batch, crop_sizes=batch.shape
+                    key=next(self.rng_seq),
+                    image=augmented_batch,
+                    crop_sizes=batch.shape,
                 )
             else:
                 batch = augmentation(key=next(self.rng_seq), image=batch)
