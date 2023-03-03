@@ -331,25 +331,24 @@ class OKOLoader:
             self.augmentations = [self.flip_left_right, self.flip_up_down]
 
         elif self.data_config.name.lower().startswith("cifar"):
-            # self.rnd_crop = pix.random_crop
+            self.rnd_crop = pix.random_crop
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
-            self.augmentations = [self.flip_left_right]
-            # self.augmentations = [self.rnd_crop, self.flip_left_right]
+            # self.augmentations = [self.flip_left_right]
+            self.augmentations = [self.rnd_crop, self.flip_left_right]
 
-    @jaxtyped
-    @typechecker
+    # @jaxtyped
+    # @typechecker
     def apply_augmentations(
         self, batch: UInt8orFP32[np.ndarray, "#batchk h w c"]
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         for i, augmentation in enumerate(self.augmentations):
-            """
             if self.data_config.name.startswith("cifar") and i == 0:
+                augmented_batch = vmap(lambda x: jnp.pad(x, pad_width=4, mode="edge"))(batch)
                 batch = augmentation(
-                    key=next(self.rng_seq), image=batch, crop_sizes=batch.shape
+                    key=next(self.rng_seq), image=augmented_batch, crop_sizes=batch.shape
                 )
             else:
-            """
-            batch = augmentation(key=next(self.rng_seq), image=batch)
+                batch = augmentation(key=next(self.rng_seq), image=batch)
         return batch
 
     @jaxtyped
