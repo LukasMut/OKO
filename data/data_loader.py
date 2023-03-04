@@ -343,6 +343,7 @@ class OKOLoader:
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         for i, augmentation in enumerate(self.augmentations):
             if self.data_config.name.startswith("cifar") and i == 0:
+                """
                 augmented_batch = vmap(lambda x: jnp.pad(x, pad_width=4, mode="edge"))(
                     batch
                 )
@@ -351,8 +352,25 @@ class OKOLoader:
                     image=augmented_batch,
                     crop_sizes=batch.shape,
                 )
+                """
+                augmented_batch = vmap(
+                    lambda x: jax.image.resize(
+                        x,
+                        shape=(x.shape[0] + 8, x.shape[0] + 8, x.shape[-1]),
+                        method="bilinear",
+                        antialias=True,
+                    )
+                )(batch)
+                batch = vmap(
+                    lambda x: augmentation(
+                        key=next(self.rng_seq), image=x, crop_sizes=batch[0].shape
+                    )
+                )(augmented_batch)
             else:
-                batch = augmentation(key=next(self.rng_seq), image=batch)
+                # batch = augmentation(key=next(self.rng_seq), image=batch)
+                batch = vmap(lambda x: augmentation(key=next(self.rng_seq), image=x))(
+                    batch
+                )
         return batch
 
     @jaxtyped
