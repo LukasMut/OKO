@@ -1,5 +1,6 @@
 from functools import partial
-from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Tuple, Union
+from typing import (Any, Callable, Dict, Iterable, Mapping, Optional, Tuple,
+                    Union)
 
 import flax
 import flax.linen as nn
@@ -38,9 +39,8 @@ class ConvBlock(nn.Module):
             bias_init=self.bias_init,
         )(x)
         if self.norm_cls:
-            scale_init = (nn.initializers.zeros
-                          if self.is_last else nn.initializers.ones)
-            mutable = self.is_mutable_collection('batch_stats')
+            scale_init = nn.initializers.zeros if self.is_last else nn.initializers.ones
+            mutable = self.is_mutable_collection("batch_stats")
             x = self.norm_cls(use_running_average=not mutable, scale_init=scale_init)(x)
 
         if not self.is_last:
@@ -48,9 +48,9 @@ class ConvBlock(nn.Module):
         return x
 
 
-def slice_variables(variables: Mapping[str, Any],
-                    start: int = 0,
-                    end: Optional[int] = None) -> flax.core.FrozenDict:
+def slice_variables(
+    variables: Mapping[str, Any], start: int = 0, end: Optional[int] = None
+) -> flax.core.FrozenDict:
     """Returns variables dict correspond to a sliced model.
 
     You can retrieve the model corresponding to the slices variables via
@@ -79,7 +79,7 @@ def slice_variables(variables: Mapping[str, Any],
     Returns:
         A flax.core.FrozenDict with the subset of parameters/state requested.
     """
-    last_ind = max(int(s.split('_')[-1]) for s in variables['params'])
+    last_ind = max(int(s.split("_")[-1]) for s in variables["params"])
     if end is None:
         end = last_ind + 1
     elif end < 0:
@@ -88,9 +88,9 @@ def slice_variables(variables: Mapping[str, Any],
     sliced_variables: Dict[str, Any] = {}
     for k, var_dict in variables.items():  # usually params and batch_stats
         sliced_variables[k] = {
-            f'layers_{i-start}': var_dict[f'layers_{i}']
+            f"layers_{i-start}": var_dict[f"layers_{i}"]
             for i in range(start, end)
-            if f'layers_{i}' in var_dict
+            if f"layers_{i}" in var_dict
         }
 
     return flax.core.freeze(sliced_variables)

@@ -1,5 +1,5 @@
-import jax.numpy as jnp
 import flax.linen as nn
+import jax.numpy as jnp
 
 Array = jnp.ndarray
 
