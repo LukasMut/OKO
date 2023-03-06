@@ -356,7 +356,7 @@ class OKOLoader:
                 augmented_batch = vmap(
                     lambda x: jax.image.resize(
                         x,
-                        shape=(x.shape[0] + 8, x.shape[0] + 8, x.shape[-1]),
+                        shape=(x.shape[0] + 4, x.shape[0] + 4, x.shape[-1]),
                         method="bilinear",
                         antialias=True,
                     )
