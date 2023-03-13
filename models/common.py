@@ -38,11 +38,12 @@ class ConvBlock(nn.Module):
             kernel_init=self.kernel_init,
             bias_init=self.bias_init,
         )(x)
+        """
         if self.norm_cls:
             scale_init = nn.initializers.zeros if self.is_last else nn.initializers.ones
             mutable = self.is_mutable_collection("batch_stats")
             x = self.norm_cls(use_running_average=not mutable, scale_init=scale_init)(x)
-
+        """
         if not self.is_last:
             x = self.activation(x)
         return x

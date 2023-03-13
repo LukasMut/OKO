@@ -153,7 +153,7 @@ def parseargs():
         "--warmup_epochs",
         type=int,
         default=20,
-        choices=[5, 10, 15, 20, 25, 30],
+        choices=[5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
         help="number of warmup epochs for linear schedule",
     )
     aa("--steps", type=int, help="save intermediate parameters every <steps> epochs")

@@ -343,7 +343,6 @@ class OKOLoader:
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         for i, augmentation in enumerate(self.augmentations):
             if self.data_config.name.startswith("cifar") and i == 0:
-                """
                 augmented_batch = vmap(lambda x: jnp.pad(x, pad_width=4, mode="edge"))(
                     batch
                 )
@@ -366,11 +365,14 @@ class OKOLoader:
                         key=next(self.rng_seq), image=x, crop_sizes=batch[0].shape
                     )
                 )(augmented_batch)
+                """
             else:
-                # batch = augmentation(key=next(self.rng_seq), image=batch)
+                batch = augmentation(key=next(self.rng_seq), image=batch)
+                """
                 batch = vmap(lambda x: augmentation(key=next(self.rng_seq), image=x))(
                     batch
                 )
+                """
         return batch
 
     @jaxtyped
@@ -436,7 +438,7 @@ class OKOLoader:
     @jaxtyped
     @typechecker
     def sample_oko_batch(
-        self, q=None
+        self, idx: int,
     ) -> Tuple[
         Union[
             UInt8orFP32[Array, "#batchk h w c"],
@@ -457,7 +459,8 @@ class OKOLoader:
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
         if self.data_config.apply_augmentations:
-            X = self.apply_augmentations(X)
+            if (idx + 1) % 2 == 0:
+                X = self.apply_augmentations(X)
         if self.data_config.is_rgb_dataset:
             X = self._normalize(X)
         return (X, y)
@@ -476,8 +479,8 @@ class OKOLoader:
         ]
     ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
-        for _ in range(self.num_batches):
-            yield self.sample_oko_batch()
+        for idx in range(self.num_batches):
+            yield self.sample_oko_batch(idx)
 
     def __iter__(self) -> Iterator:
         if self.train:

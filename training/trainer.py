@@ -200,7 +200,7 @@ class OKOTrainer:
         self.rng_seq = hk.PRNGSequence(self.rnd_seed)
         self.rng = jax.random.PRNGKey(self.rnd_seed)
         self.gpu_devices = jax.local_devices(backend="gpu")
-        self.backbone = self.model_config.type.lower()
+        self.backbone = "custom" # self.model_config.type.lower()
         # inititalize model
         self.init_model()
         # enable logging
