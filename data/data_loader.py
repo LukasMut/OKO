@@ -438,7 +438,8 @@ class OKOLoader:
     @jaxtyped
     @typechecker
     def sample_oko_batch(
-        self, idx: int,
+        self,
+        idx: int,
     ) -> Tuple[
         Union[
             UInt8orFP32[Array, "#batchk h w c"],

@@ -17,8 +17,8 @@ def get_configs(args, **kwargs):
     data_config.min_samples = args.min_samples
     # dataset imbalance is a function of p
     data_config.class_probs = kwargs.pop("p_mass")
-    # number of classes that occur frequently in the data
-    data_config.n_frequent_classes = 3
+    # number of classes that are overrepresented in the data
+    data_config.n_frequent_classes = args.overrepresented_classes
     # whether to balance mini-batches
     data_config.sampling = kwargs.pop("sampling")
     # maximum number of triplets
@@ -75,7 +75,7 @@ def get_configs(args, **kwargs):
 
     if data_config.targets == "soft_noisy":
         # TODO: figure out what's the best energy value for noisy labels
-        data_config.energy = 10 
+        data_config.energy = 10
 
     # TODO: enable half precision when running things on TPU
     model_config.half_precision = False
@@ -87,7 +87,9 @@ def get_configs(args, **kwargs):
     optimizer_config.lr = kwargs.pop("eta")
     optimizer_config.epochs = kwargs.pop("epochs")
     optimizer_config.warmup_epochs = args.warmup_epochs
-    optimizer_config.steps_per_epoch = math.ceil(data_config.num_sets / data_config.oko_batch_size)
+    optimizer_config.steps_per_epoch = math.ceil(
+        data_config.num_sets / data_config.oko_batch_size
+    )
     optimizer_config.clip_val = float(1)
     data_config.epochs = optimizer_config.epochs
     data_config.initial_lr = optimizer_config.lr

@@ -172,6 +172,12 @@ def parseargs():
         help="minimum number of examples per class",
     )
     aa(
+        "--overrepresented_classes",
+        type=int,
+        default=3,
+        help="number of classes that will be overrepresented with probability mass <p>",
+    )
+    aa(
         "--regularization",
         action="store_true",
         help="apply l2 regularization on the model's params during training",
@@ -294,6 +300,7 @@ def get_fs_subset(
     n_samples: int,
     min_samples: int,
     p_mass: float,
+    overrepresented_classes: int,
     rnd_seed: int,
 ) -> Tuple[UInt8orFP32[Array, "n_prime h w c"], Float32[Array, "n_prime num_cls"]]:
     """Get a subset with <n_samples> data points of the full training data, following a long tail class distribution."""
@@ -303,6 +310,7 @@ def get_fs_subset(
         n_samples=n_samples,
         min_samples=min_samples,
         probability_mass=p_mass,
+        overrepresented_classes=overrepresented_classes,
         seed=rnd_seed,
     )
     fs_subset = data_partitioner.partitioning()
@@ -421,9 +429,17 @@ def inference(
     auc = roc_auc_score(
         y_true=np.asarray(y_test), y_score=np.asarray(probas), average="macro"
     )
-    ece = tfp.stats.expected_calibration_error(num_bins=10, logits=logits, labels_true=jnp.nonzero(y_test)[-1])
+    ece = tfp.stats.expected_calibration_error(
+        num_bins=10, logits=logits, labels_true=jnp.nonzero(y_test)[-1]
+    )
     test_performance = flax.core.FrozenDict(
-        {"loss": loss, "auc": auc, "avg-entropy": avg_entropy, "accuracy": acc, "ece": ece.item()}
+        {
+            "loss": loss,
+            "auc": auc,
+            "avg-entropy": avg_entropy,
+            "accuracy": acc,
+            "ece": ece.item(),
+        }
     )
     train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
     cls_distribution = dict(Counter(train_labels.tolist()))
@@ -678,6 +694,7 @@ if __name__ == "__main__":
         min_samples=args.min_samples,
         p_mass=p_mass,
         n_samples=n_samples,
+        overrepresented_classes=args.overrepresented_classes,
         rnd_seed=rnd_seed,
     )
 

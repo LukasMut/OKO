@@ -31,6 +31,7 @@ class DataPartitioner:
     labels: FP32orFP64[np.ndarray, "n_train num_cls"]
     n_samples: int
     probability_mass: float
+    overrepresented_classes: int
     min_samples: int
     seed: int
 
@@ -66,7 +67,11 @@ class DataPartitioner:
     def sample_examples(
         self, n_classes: int, n_totals: int, p: float
     ) -> FP32orFP64[np.ndarray, "n_totals"]:
-        class_distribution = self.get_class_distribution(num_classes=n_classes, p=p)
+        class_distribution = self.get_class_distribution(
+            num_classes=n_classes,
+            p=p,
+            overrepresented_classe=self.overrepresented_classes,
+        )
         sample = np.random.choice(
             n_classes, size=n_totals, replace=True, p=class_distribution
         )
@@ -75,18 +80,20 @@ class DataPartitioner:
 
     @staticmethod
     def get_class_distribution(
-        num_classes: int, p: float, k: int = 3
+        num_classes: int, p: float, overrepresented_classes: int = 3
     ) -> FP32orFP64[np.ndarray, "num_cls"]:
         """With probabilities $(p/k)$ and $(1-p)/(T-k)$ sample $k$ frequent and $T-k$ rare classes respectively."""
         distribution = np.zeros(num_classes)
-        p_k = p / k
-        q_k = (1 - p) / (num_classes - k)
-        frequent_classes = np.random.choice(num_classes, size=k, replace=False)
-        rare_classes = np.asarray(
+        p_k = p / overrepresented_classes
+        q_k = (1 - p) / (num_classes - overrepresented_classes)
+        frequent_classes = np.random.choice(
+            num_classes, size=overrepresented_classes, replace=False
+        )
+        underrepresented_classes = np.asarray(
             list(set(range(num_classes)).difference(list(frequent_classes)))
         )
         distribution[frequent_classes] += p_k
-        distribution[rare_classes] += q_k
+        distribution[underrepresented_classes] += q_k
         return distribution
 
     @staticmethod
