@@ -70,7 +70,7 @@ class DataPartitioner:
         class_distribution = self.get_class_distribution(
             num_classes=n_classes,
             p=p,
-            overrepresented_classe=self.overrepresented_classes,
+            overrepresented_classes=self.overrepresented_classes,
         )
         sample = np.random.choice(
             n_classes, size=n_totals, replace=True, p=class_distribution
