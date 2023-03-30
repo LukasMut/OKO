@@ -188,6 +188,11 @@ def parseargs():
         help="use data augmentations during training",
     )
     aa(
+        "--label_noise",
+        action="store_true",
+        help="use data augmentations during training",
+    )
+    aa(
         "--collect_reps",
         action="store_true",
         help="whether to store encoder latent representations",
@@ -530,6 +535,7 @@ def make_results_df(
     results_current_run["initial_lr"] = data_config.initial_lr
     results_current_run["l2_reg"] = model_config.regularization
     results_current_run["convergence_time"] = epoch
+    results_current_run["label_noise"] = data_config.label_noise
     return results_current_run
 
 
@@ -588,6 +594,7 @@ def save_results(
             "initial_lr",
             "l2_reg",
             "convergence_time",
+            "label_noise",
         ]
         results_current_run = make_results_df(
             columns=columns,

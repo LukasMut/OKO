@@ -32,6 +32,7 @@ def get_configs(args, **kwargs):
     data_config.k = kwargs.pop("num_odds")
     data_config.targets = args.targets
     data_config.apply_augmentations = args.apply_augmentations
+    data_config.label_noise = args.label_noise
 
     if data_config.name in RGB_DATASETS:
         import utils

@@ -17,7 +17,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax import vmap
 from jax.tree_util import register_pytree_node_class
-from jaxtyping import AbstractDtype, Array, Float32, Int32, jaxtyped
+from jaxtyping import AbstractDtype, Array, Float32, Float64, Int32, jaxtyped
 from ml_collections import config_dict
 from typeguard import typechecked as typechecker
 
@@ -254,6 +254,10 @@ class OKOLoader:
         self.rng_seq = hk.PRNGSequence(self.seed)
 
         self.num_classes = self.y.shape[-1]
+
+        if self.data_config.label_noise:
+            self.y = self.swap_labels(self.y)
+
         self.y_prime = jnp.nonzero(self.y)[-1]
         self.classes = jnp.unique(self.y_prime)
 
@@ -391,6 +395,18 @@ class OKOLoader:
         batch -= self.data_config.means
         batch /= self.data_config.stds
         return batch
+
+    @staticmethod
+    def random_permute(x: Float32[Array, "num_cls"]) -> Float64[np.ndarray, "num_cls"]:
+        swap = np.random.choice(a=[0, 1], size=1, p=[0.8, 0.2]).item()
+        if swap:
+            x = np.random.permutation(x)
+        return x
+
+    def swap_labels(
+        self, y: Float32[Array, "n num_cls"]
+    ) -> Float64[np.ndarray, "n num_cls"]:
+        return np.apply_along_axis(self.random_permute, axis=1, arr=y)
 
     @jaxtyped
     @typechecker
