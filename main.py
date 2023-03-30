@@ -80,6 +80,7 @@ def parseargs():
             "cifar100",
             "imagenet",
             "imagenet_lt",
+            "downsampled_imagenet",
         ],
     )
     aa(
