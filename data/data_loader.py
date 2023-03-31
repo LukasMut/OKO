@@ -255,7 +255,7 @@ class OKOLoader:
 
         self.num_classes = self.y.shape[-1]
 
-        if self.data_config.label_noise:
+        if self.train and self.data_config.label_noise:
             self.y = self.swap_labels(self.y)
 
         self.y_prime = jnp.nonzero(self.y)[-1]
