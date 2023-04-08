@@ -117,9 +117,9 @@ class SetMaker:
                 pair_classes=pair_classes,
             )
             sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
-            if self.target_type.startswith("soft"):
-                odd_classes = self.vget_odd_classes(sets, pair_classes)
-                return sets, pair_classes, odd_classes
+            # if self.target_type.startswith("soft"):
+            odd_classes = self.vget_odd_classes(sets, pair_classes)
+            return sets, pair_classes, odd_classes
         else:
             # pair learning (i.e., set cardinality = 2)
             sets = np.c_[pair_classes, pair_classes]
@@ -461,18 +461,18 @@ class OKOLoader:
             UInt8orFP32[Array, "#batchk h w c"],
             UInt8orFP32[np.ndarray, "#batchk h w c"],
         ],
-        Float32[Array, "#batch num_cls"],
+        Tuple[Float32[Array, "#batch num_cls"], Float32[Array, "#batch num_cls"]],
     ]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members()
+        sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
         if self.data_config.targets.startswith("soft"):
             # create "soft" targets that reflect the true probability distribution of the classes in a set
-            sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
-            y = self.target_maker._make_targets(pair_classes, odd_classes)
+            y_p = self.target_maker._make_targets(pair_classes, odd_classes)
         else:
             # create "hard" targets with a point mass at the pair class
-            sets, pair_classes = self.set_maker._make_sets(set_members)
-            y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
+            y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
+        y_n = jax.nn.one_hot(x=odd_classes, num_classes=self.num_classes)
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
         if self.data_config.apply_augmentations:
@@ -480,7 +480,7 @@ class OKOLoader:
                 X = self.apply_augmentations(X)
         if self.data_config.is_rgb_dataset:
             X = self._normalize(X)
-        return (X, y)
+        return (X, (y_p, y_n))
 
     @jaxtyped
     @typechecker
@@ -492,7 +492,7 @@ class OKOLoader:
                 UInt8orFP32[Array, "#batchk h w c"],
                 UInt8orFP32[np.ndarray, "#batchk h w c"],
             ],
-            Float32[Array, "#batch num_cls"],
+            Tuple[Float32[Array, "#batch num_cls"], Float32[Array, "#batch num_cls"]],
         ]
     ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""

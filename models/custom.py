@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from typing import Sequence
+from typing import Sequence, Tuple, Union
 
 import flax.linen as nn
 from jaxtyping import AbstractDtype, Array, Float32, jaxtyped
+from pyexpat import features
 from typeguard import typechecked as typechecker
 
 from .oko_head import OKOHead
@@ -83,6 +84,7 @@ class Custom(nn.Module):
         self.head = OKOHead(
             backbone="custom",
             num_classes=self.num_classes,
+            features=self.encoder_widths[-1],
             k=self.k,
         )
 
@@ -91,7 +93,10 @@ class Custom(nn.Module):
     @typechecker
     def __call__(
         self, x: UInt8orFP32[Array, "#batchk h w c"], train: bool = True
-    ) -> Float32[Array, "#batch num_cls"]:
+    ) -> Union[
+        Float32[Array, "#batch num_cls"],
+        Tuple[Float32[Array, "#batch num_cls"], Float32[Array, "#batch num_cls"]],
+    ]:
         x = self.encoder(x)
         if self.capture_intermediates:
             self.sow("intermediates", "latent_reps")

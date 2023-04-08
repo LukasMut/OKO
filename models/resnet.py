@@ -153,7 +153,12 @@ class ResNet(nn.Module):
     )
 
     def setup(self) -> None:
-        self.head = OKOHead(backbone="resnet", num_classes=self.num_classes, k=self.k)
+        self.head = OKOHead(
+            backbone="resnet",
+            num_classes=self.num_classes,
+            k=self.k,
+            features=self.hidden_sizes[-1],
+        )
 
     def _make_layers(self, stem_cls: Callable, block_cls: Callable) -> List[Callable]:
         layers = [stem_cls(), self.pool_fn]

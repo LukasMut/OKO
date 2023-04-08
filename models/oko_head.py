@@ -3,9 +3,10 @@
 
 __all__ = ["OKOHead"]
 
-from typing import Any
+from typing import Any, Tuple, Union
 
 import flax.linen as nn
+import jax
 import jax.numpy as jnp
 from einops import rearrange
 from jax import vmap
@@ -17,6 +18,7 @@ class OKOHead(nn.Module):
     backbone: str
     num_classes: int
     k: int
+    features: int
     dtype: Any = jnp.float32
 
     def setup(self):
@@ -28,15 +30,26 @@ class OKOHead(nn.Module):
                 ],
                 name="oko_query",
             )
+            self.key = nn.Sequential(
+                [
+                    nn.LayerNorm(),
+                    nn.Dense(self.num_classes),
+                ],
+                name="oko_key",
+            )
         else:
             self.query = nn.Dense(self.num_classes, name="oko_query")
+            self.key = nn.Dense(self.num_classes, name="oko_key")
+        self.attention = self.param(
+            "attention", jax.nn.initializers.ones, ((self.k + 3) * self.features,)
+        )
 
     @jaxtyped
     @typechecker
     def aggregation(
         self, x: Float32[Array, "#batch k d"]
     ) -> Float32[Array, "#batch num_cls"]:
-        """Aggregate logits over all members in a set."""
+        """Aggregate logits over all members in each set."""
         dots = vmap(self.query, in_axes=1, out_axes=1)(x)
         out = dots.sum(axis=1)
         return out
@@ -45,13 +58,24 @@ class OKOHead(nn.Module):
     @jaxtyped
     @typechecker
     def __call__(
-        self, x: Float32[Array, "#batchk d"], train: bool = True
-    ) -> Float32[Array, "#batch num_cls"]:
+        self,
+        x: Float32[Array, "#batchk d"],
+        train: bool = True,
+    ) -> Union[
+        Float32[Array, "#batch num_cls"],
+        Tuple[Float32[Array, "#batch num_cls"], Float32[Array, "#batch num_cls"]],
+    ]:
         if train:
-            x = rearrange(
+            x_p = rearrange(
                 x, "(b k) d -> b k d", b=x.shape[0] // (self.k + 2), k=self.k + 2
             )
-            out = self.aggregation(x)
+            out_p = self.aggregation(x_p)
+            x_n = rearrange(
+                x, "(b k) d -> b (k d)", b=x.shape[0] // (self.k + 2), k=self.k + 2
+            )
+            x_n = x_n + (x_n * self.attention)
+            out_n = self.key(x_n)
+            out = (out_p, out_n)
         else:
             out = self.query(x)
         return out

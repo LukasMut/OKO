@@ -418,13 +418,13 @@ def inference(
             assert isinstance(
                 batch_size, int
             ), "\nBatch size parameter required to circumvent problems with GPU VRAM.\n"
-            loss, cls_hits, predictions = batch_inference(
+            loss, cls_hits, logits = batch_inference(
                 trainer=trainer,
                 X_test=X_test,
                 y_test=y_test,
                 batch_size=batch_size,
             )
-            probas = jax.nn.softmax(predictions)
+            probas = jax.nn.softmax(logits)
 
     def entropy(p: Float32[Array, "#batch num_cls"]) -> Float32[Array, "#batch"]:
         return -jnp.sum(jnp.where(p == 0, 0, p * jnp.log(p)), axis=-1)
@@ -608,21 +608,11 @@ def save_results(
         results_current_run.to_pickle(os.path.join(out_path, "results.pkl"))
 
 
-def create_model(*, model_cls, model_config, data_config) -> Any:
-    platform = jax.local_devices()[0].platform
-    if model_config.half_precision:
-        if platform == "tpu":
-            model_dtype = jnp.bfloat16
-        else:
-            model_dtype = jnp.float16
-    else:
-        model_dtype = jnp.float32
-    model = model_cls(
+def create_model(model_cls, model_config, data_config) -> Any:
+    return model_cls(
         num_classes=model_config.n_classes,
         k=data_config.k,
     )
-    return model
-
 
 def get_model(model_config: FrozenDict, data_config: FrozenDict):
     """Create model instance."""

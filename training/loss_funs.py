@@ -96,6 +96,10 @@ def class_hits(
     target_type: str,
 ) -> Dict[int, List[int]]:
     """Compute the per-class accuracy for imbalanced datasets."""
+    if isinstance(logits, tuple):
+        logits = logits[0]
+    if isinstance(targets, tuple):
+        targets = targets[0]
     y_hat = logits.argmax(axis=-1)
     cls_hits = defaultdict(list)
     if target_type.startswith("soft"):
@@ -168,10 +172,12 @@ def loss_fn_custom(
 ) -> Tuple[Array, Tuple[Array]]:
     logits = custom_predict(state, params, X)
     if target_type.startswith("soft"):
-        log_probs = jax.nn.log_softmax(logits, axis=-1)
-        loss = kl_divergence(y, log_probs).mean()
+        log_probs = jax.nn.log_softmax(logits[0], axis=-1)
+        loss_p = kl_divergence(y[0], log_probs).mean()
     else:
-        loss = optax.softmax_cross_entropy(logits, y).mean()
+        loss_p = optax.softmax_cross_entropy(logits[0], y[0]).mean()
+    loss_n = optax.softmax_cross_entropy(logits[1], y[1]).mean()
+    loss = loss_p + loss_n
     return loss, logits
 
 
@@ -185,10 +191,12 @@ def loss_fn_resnet(
 ) -> Tuple[Array, Tuple[Array]]:
     logits, new_state = resnet_predict(state, params, X, train)
     if target_type.startswith("soft"):
-        log_probs = jax.nn.log_softmax(logits, axis=-1)
-        loss = kl_divergence(y, log_probs).mean()
+        log_probs = jax.nn.log_softmax(logits[0], axis=-1)
+        loss_p = kl_divergence(y[0], log_probs).mean()
     else:
-        loss = optax.softmax_cross_entropy(logits, y).mean()
+        loss_p = optax.softmax_cross_entropy(logits[0], y[0]).mean()
+    loss_n = optax.softmax_cross_entropy(logits[1], y[1]).mean()
+    loss = loss_p + loss_n
     aux = (logits, new_state)
     return loss, aux
 
@@ -204,9 +212,11 @@ def loss_fn_vit(
 ) -> Tuple[Array, Tuple[Array]]:
     logits, rng = vit_predict(state, params, X, rng, train)
     if target_type.startswith("soft"):
-        log_probs = jax.nn.log_softmax(logits, axis=-1)
-        loss = kl_divergence(y, log_probs).mean()
+        log_probs = jax.nn.log_softmax(logits[0], axis=-1)
+        loss_p = kl_divergence(y[0], log_probs).mean()
     else:
-        loss = optax.softmax_cross_entropy(logits, y).mean()
+        loss_p = optax.softmax_cross_entropy(logits[0], y[0]).mean()
+    loss_n = optax.softmax_cross_entropy(logits[1], y[1]).mean()
+    loss = loss_p + loss_n
     aux = (logits, rng)
     return loss, aux
