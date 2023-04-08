@@ -104,27 +104,16 @@ class SetMaker:
             Int32[np.ndarray, "#batch"],
             Int32[Array, "#batch k"],
         ],
-        Tuple[
-            Int32[np.ndarray, "#batch set_card"],
-            Int32[np.ndarray, "#batch"],
-        ],
     ]:
         pair_classes = self.choose_pair_classes(members)
-        if self.num_odds > 0:
-            # odd-k-out learning
-            sets = self.make_sets(
-                members=members,
-                pair_classes=pair_classes,
-            )
-            sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
-            # if self.target_type.startswith("soft"):
-            odd_classes = self.vget_odd_classes(sets, pair_classes)
-            return sets, pair_classes, odd_classes
-        else:
-            # pair learning (i.e., set cardinality = 2)
-            sets = np.c_[pair_classes, pair_classes]
-            sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
-        return sets, pair_classes
+        sets = self.make_sets(
+            members=members,
+            pair_classes=pair_classes,
+        )
+        sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
+        # if self.target_type.startswith("soft"):
+        odd_classes = self.vget_odd_classes(sets, pair_classes)
+        return sets, pair_classes, odd_classes
 
 
 @register_pytree_node_class
@@ -133,8 +122,6 @@ class TargetMaker:
     num_cls: int
     num_odds: int
     set_card: int
-    random_numbers: Optional[Iterator] = None
-    energy: Optional[int] = None
 
     def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
         children = ()
@@ -143,18 +130,11 @@ class TargetMaker:
             "num_odds": self.num_odds,
             "set_card": self.set_card,
         }
-        if self.random_numbers:
-            aux_data.update(
-                {"random_numbers": self.random_numbers, "energy": self.energy}
-            )
         return (children, aux_data)
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         return cls(*children, **aux_data)
-
-    def get_key(self) -> Array:
-        return jax.random.PRNGKey(next(self.random_numbers))
 
     @jaxtyped
     @typechecker
@@ -195,8 +175,6 @@ class TargetMaker:
             y = self.make_bimodal_targets(pair_classes, odd_classes)
         else:
             y = self.make_multimodal_targets(pair_classes, odd_classes)
-        if self.random_numbers:
-            y = jax.random.dirichlet(self.get_key(), alpha=y * self.energy)
         return y
 
 
@@ -280,17 +258,6 @@ class OKOLoader:
                 ), "\nIf you want to use soft labels, there must at least be one odd class.\n"
                 self.target_maker = TargetMaker(
                     self.num_classes, self.data_config.k, self.set_card
-                )
-            elif self.data_config.targets == "soft_noisy":
-                assert (
-                    self.data_config.k > 0
-                ), "\nIf you want to use noisy soft labels, there must at least be one odd class.\n"
-                self.target_maker = TargetMaker(
-                    self.num_classes,
-                    self.data_config.k,
-                    self.set_card,
-                    iter(np.random.permutation(max_num)),
-                    self.data_config.energy,
                 )
 
             self._create_functions()
