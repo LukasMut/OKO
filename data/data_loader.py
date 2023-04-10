@@ -346,8 +346,8 @@ class OKOLoader:
                 """
         return batch
 
-    @jaxtyped
-    @typechecker
+    # @jaxtyped
+    # @typechecker
     def _normalize(
         self,
         batch: Union[
