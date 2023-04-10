@@ -41,7 +41,7 @@ class OKOHead(nn.Module):
             self.query = nn.Dense(self.num_classes, name="oko_query")
             self.key = nn.Dense(self.num_classes, name="oko_key")
         self.attention = self.param(
-            "attention", jax.nn.initializers.ones, ((self.k + 3) * self.features,)
+            "attention", jax.nn.initializers.ones, ((self.k + 2) * self.features,)
         )
 
     @jaxtyped
