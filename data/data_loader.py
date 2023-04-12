@@ -418,8 +418,8 @@ class OKOLoader:
             y = self.y[np.asarray(subset)]
             yield (X, y)
 
-    @jaxtyped
-    @typechecker
+    # @jaxtyped
+    # @typechecker
     def sample_oko_batch(
         self,
         idx: int,
@@ -449,8 +449,8 @@ class OKOLoader:
             X = self._normalize(X)
         return (X, (y_p, y_n))
 
-    @jaxtyped
-    @typechecker
+    # @jaxtyped
+    # @typechecker
     def oko_batch_balancing(
         self,
     ) -> Iterator[
