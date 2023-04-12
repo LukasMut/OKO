@@ -19,6 +19,7 @@ import tensorflow as tf
 from jaxtyping import AbstractDtype, Array, Float32, jaxtyped
 from ml_collections import config_dict
 from sklearn.metrics import roc_auc_score
+from tensorflow_probability.substrates import jax as tfp
 from typeguard import typechecked as typechecker
 
 import models
@@ -26,7 +27,6 @@ import utils
 from config import get_configs
 from data import DataPartitioner, OKOLoader
 from training import OKOTrainer
-from tensorflow_probability.substrates import jax as tfp
 
 FrozenDict = config_dict.FrozenConfigDict
 
@@ -435,16 +435,27 @@ def inference(
     auc = roc_auc_score(
         y_true=np.asarray(y_test), y_score=np.asarray(probas), average="macro"
     )
+    true_labels = jnp.nonzero(y_test)[-1]
     ece = tfp.stats.expected_calibration_error(
-        num_bins=10, logits=logits, labels_true=jnp.nonzero(y_test)[-1]
+        num_bins=10,
+        logits=logits,
+        labels_true=true_labels,
+    ).item()
+    brier_score = tfp.stats.brier_score(labels=true_labels, logits=logits).mean().item()
+    uncertainty, resolution, reliability = tfp.stats.brier_decomposition(
+        labels=true_labels,
+        logits=logits,
     )
+    brier_decomp = (uncertainty.item(), resolution.item(), reliability.item())
     test_performance = flax.core.FrozenDict(
         {
             "loss": loss,
             "auc": auc,
             "avg-entropy": avg_entropy,
             "accuracy": acc,
-            "ece": ece.item(),
+            "brier_score": brier_score,
+            "brier_decomp": brier_decomp,
+            "ece": ece,
         }
     )
     train_labels = jnp.nonzero(train_labels, size=train_labels.shape[0])[-1]
@@ -523,6 +534,8 @@ def make_results_df(
     results_current_run["cross-entropy"] = performance["loss"]
     results_current_run["auc"] = performance["auc"]
     results_current_run["ece"] = performance["ece"]
+    results_current_run["brier_score"] = performance["brier_score"]
+    results_current_run["brier_decomp"] = performance["brier_decomp"]
     results_current_run["avg-entropy"] = performance["avg-entropy"]
     results_current_run["training"] = model_config.task
     results_current_run["sampling"] = data_config.sampling
@@ -582,6 +595,8 @@ def save_results(
             "cross-entropy",
             "auc",
             "ece",
+            "brier_score",
+            "brier_decomp",
             "avg-entropy",
             "training",
             "sampling",
@@ -613,6 +628,7 @@ def create_model(model_cls, model_config, data_config) -> Any:
         num_classes=model_config.n_classes,
         k=data_config.k,
     )
+
 
 def get_model(model_config: FrozenDict, data_config: FrozenDict):
     """Create model instance."""
