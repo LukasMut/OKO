@@ -495,7 +495,7 @@ def inference(
         model_config=model_config,
         data_config=data_config,
     )
-    return probas
+    return probas, train_labels
 
 
 def sort_cls_distribution(cls_distribution: Dict[int, int]) -> Dict[int, int]:
@@ -784,7 +784,7 @@ if __name__ == "__main__":
         rnd_seed=rnd_seed,
     )
 
-    probas = inference(
+    probas, train_labels = inference(
         out_path=args.out_path,
         epoch=epoch,
         trainer=trainer,
@@ -810,7 +810,7 @@ if __name__ == "__main__":
     with open(os.path.join(calibration_dir, "labels_plus_probas.npz"), "wb") as f:
         np.savez_compressed(
             file=f,
-            train_labels=np.array(train_set[1]),
+            train_labels=np.array(train_labels),
             test_labels=np.array(test_set[1]),
             test_probas=np.array(probas),
         )
