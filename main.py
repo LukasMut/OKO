@@ -809,5 +809,8 @@ if __name__ == "__main__":
 
     with open(os.path.join(calibration_dir, "labels_plus_probas.npz"), "wb") as f:
         np.savez_compressed(
-            file=f, labels=np.array(test_set[1]), probas=np.array(probas)
+            file=f,
+            train_labels=np.array(train_set[1]),
+            test_labels=np.array(test_set[1]),
+            test_probas=np.array(probas),
         )
