@@ -798,7 +798,7 @@ if __name__ == "__main__":
         collect_reps=args.collect_reps,
     )
     calibration_dir = make_calibration_dir(
-        results_root=args.out_path,
+        root=args.out_path,
         data_config=data_config,
         model_config=model_config,
         rnd_seed=rnd_seed,
