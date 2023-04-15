@@ -243,7 +243,7 @@ def get_combination(
     return combs[int(os.environ["SLURM_ARRAY_TASK_ID"])]
 
 
-def make_path(
+def make_log_dir(
     root: str,
     model_config: FrozenDict,
     data_config: FrozenDict,
@@ -251,14 +251,37 @@ def make_path(
 ) -> str:
     path = os.path.join(
         root,
+        "logs",
         data_config.name,
         model_config.task,
         model_config.type + model_config.depth,
-        data_config.sampling,
+        data_config.targets,
         f"{data_config.n_samples}_samples",
+        f"{data_config.class_probs:.2f}",
         str(data_config.k),
         str(data_config.num_sets),
+        f"seed{rnd_seed:02d}",
+    )
+    return path
+
+
+def make_calibration_dir(
+    root: str,
+    model_config: FrozenDict,
+    data_config: FrozenDict,
+    rnd_seed: int,
+) -> str:
+    path = os.path.join(
+        root,
+        "calibration",
+        data_config.name,
+        model_config.task,
+        model_config.type + model_config.depth,
         data_config.targets,
+        f"{data_config.n_samples}_samples",
+        f"{data_config.class_probs:.2f}",
+        str(data_config.k),
+        str(data_config.num_sets),
         f"seed{rnd_seed:02d}",
     )
     return path
@@ -272,7 +295,7 @@ def create_dirs(
 ):
     """Create directories for saving and loading model checkpoints."""
     dir_config = config_dict.ConfigDict()
-    log_dir = make_path(results_root, model_config, data_config, rnd_seed)
+    log_dir = make_log_dir(results_root, model_config, data_config, rnd_seed)
     dir_config.log_dir = log_dir
 
     if not os.path.exists(log_dir):
@@ -472,6 +495,7 @@ def inference(
         model_config=model_config,
         data_config=data_config,
     )
+    return probas
 
 
 def sort_cls_distribution(cls_distribution: Dict[int, int]) -> Dict[int, int]:
@@ -760,7 +784,7 @@ if __name__ == "__main__":
         rnd_seed=rnd_seed,
     )
 
-    inference(
+    probas = inference(
         out_path=args.out_path,
         epoch=epoch,
         trainer=trainer,
@@ -773,3 +797,17 @@ if __name__ == "__main__":
         batch_size=main_batch_size,
         collect_reps=args.collect_reps,
     )
+    calibration_dir = make_calibration_dir(
+        results_root=args.out_path,
+        data_config=data_config,
+        model_config=model_config,
+        rnd_seed=rnd_seed,
+    )
+    if not os.path.exists(calibration_dir):
+        print("\n...Creating directory for analyzing model calibration.\n")
+        os.makedirs(calibration_dir, exist_ok=True)
+
+    with open(os.path.join(calibration_dir, "labels_plus_probas.npz"), "wb") as f:
+        np.savez_compressed(
+            file=f, labels=np.array(test_set[1]), probas=np.array(probas)
+        )
