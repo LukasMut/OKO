@@ -559,7 +559,7 @@ def make_results_df(
     results_current_run["auc"] = performance["auc"]
     results_current_run["ece"] = performance["ece"]
     results_current_run["brier_score"] = performance["brier_score"]
-    results_current_run["brier_decomp"] = performance["brier_decomp"]
+    results_current_run["brier_decomp"] = [performance["brier_decomp"]]
     results_current_run["avg-entropy"] = performance["avg-entropy"]
     results_current_run["training"] = model_config.task
     results_current_run["sampling"] = data_config.sampling
