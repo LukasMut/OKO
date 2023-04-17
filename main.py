@@ -258,8 +258,6 @@ def make_log_dir(
         data_config.targets,
         f"{data_config.n_samples}_samples",
         f"{data_config.class_probs:.2f}",
-        str(data_config.k),
-        str(data_config.num_sets),
         f"seed{rnd_seed:02d}",
     )
     return path
@@ -280,8 +278,6 @@ def make_calibration_dir(
         data_config.targets,
         f"{data_config.n_samples}_samples",
         f"{data_config.class_probs:.2f}",
-        str(data_config.k),
-        str(data_config.num_sets),
         f"seed{rnd_seed:02d}",
     )
     return path
