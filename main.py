@@ -491,7 +491,7 @@ def inference(
         model_config=model_config,
         data_config=data_config,
     )
-    return probas, train_labels
+    return logits, train_labels
 
 
 def sort_cls_distribution(cls_distribution: Dict[int, int]) -> Dict[int, int]:
@@ -779,8 +779,7 @@ if __name__ == "__main__":
         steps=args.steps,
         rnd_seed=rnd_seed,
     )
-
-    probas, train_labels = inference(
+    logits, train_labels = inference(
         out_path=args.out_path,
         epoch=epoch,
         trainer=trainer,
@@ -808,5 +807,5 @@ if __name__ == "__main__":
             file=f,
             train_labels=np.array(train_labels),
             test_labels=np.array(test_set[1]),
-            test_probas=np.array(probas),
+            test_logits=np.array(logits),
         )
