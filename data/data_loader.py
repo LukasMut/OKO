@@ -111,7 +111,7 @@ class SetMaker:
             pair_classes=pair_classes,
         )
         sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
-        # if self.target_type.startswith("soft"):
+        # if self.target_type == "soft":
         odd_classes = self.vget_odd_classes(sets, pair_classes)
         return sets, pair_classes, odd_classes
 
@@ -433,7 +433,7 @@ class OKOLoader:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members()
         sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
-        if self.data_config.targets.startswith("soft"):
+        if self.data_config.targets == "soft":
             # create "soft" targets that reflect the true probability distribution of the classes in a set
             y_p = self.target_maker._make_targets(pair_classes, odd_classes)
         else:

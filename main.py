@@ -103,7 +103,7 @@ def parseargs():
         "--targets",
         type=str,
         default="hard",
-        choices=["hard", "soft", "soft_noisy"],
+        choices=["hard", "soft"],
         help="whether to use hard targets with a point mass at the pair class or soft targets that reflect the true class distribution in a set",
     )
     aa(
@@ -272,7 +272,6 @@ def make_calibration_dir(
     path = os.path.join(
         root,
         "calibration",
-        data_config.name,
         model_config.task,
         model_config.type + model_config.depth,
         data_config.targets,
