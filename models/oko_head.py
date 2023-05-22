@@ -70,12 +70,15 @@ class OKOHead(nn.Module):
                 x, "(b k) d -> b k d", b=x.shape[0] // (self.k + 2), k=self.k + 2
             )
             out_p = self.aggregation(x_p)
+            """
             x_n = rearrange(
                 x, "(b k) d -> b (k d)", b=x.shape[0] // (self.k + 2), k=self.k + 2
             )
             x_n = x_n + (x_n * self.attention)
             out_n = self.key(x_n)
             out = (out_p, out_n)
+            """
+            out = out_p
         else:
             out = self.query(x)
         return out
