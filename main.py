@@ -169,7 +169,7 @@ def parseargs():
     aa(
         "--min_samples",
         type=int,
-        default=None,
+        default=5,
         help="minimum number of examples per class",
     )
     aa(
