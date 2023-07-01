@@ -47,9 +47,10 @@ class OKOHead(nn.Module):
     @jaxtyped
     @typechecker
     def aggregation(
-        self, x: Float32[Array, "#batch k d"]
+        self, x: Float32[Array, "#batchk d"]
     ) -> Float32[Array, "#batch num_cls"]:
         """Aggregate logits over all members in each set."""
+        x = rearrange(x, "(b k) d -> b k d", b=x.shape[0] // (self.k + 2), k=self.k + 2)
         dots = vmap(self.query, in_axes=1, out_axes=1)(x)
         out = dots.sum(axis=1)
         return out
@@ -66,19 +67,16 @@ class OKOHead(nn.Module):
         Tuple[Float32[Array, "#batch num_cls"], Float32[Array, "#batch num_cls"]],
     ]:
         if train:
-            x_p = rearrange(
-                x, "(b k) d -> b k d", b=x.shape[0] // (self.k + 2), k=self.k + 2
-            )
-            out_p = self.aggregation(x_p)
-            """
-            x_n = rearrange(
+            out_p = self.aggregation(x)
+            x = rearrange(
                 x, "(b k) d -> b (k d)", b=x.shape[0] // (self.k + 2), k=self.k + 2
             )
-            x_n = x_n + (x_n * self.attention)
-            out_n = self.key(x_n)
+            x = x + (x * self.attention)
+            out_n = self.key(x)
             out = (out_p, out_n)
             """
             out = out_p
+            """
         else:
             out = self.query(x)
         return out

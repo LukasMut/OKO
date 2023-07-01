@@ -287,7 +287,7 @@ class OKOLoader:
                 instances.extend(rnd_sample)
             return instances
 
-        # partially initialize functions for computational efficiency
+        # partially initialize functions for more computational efficiency
         if self.train:
             self.sample_set_instances = partial(sample_set_instances, self.y_prime)
 
@@ -324,28 +324,24 @@ class OKOLoader:
                     image=augmented_batch,
                     crop_sizes=subbatch_j.shape,
                 )
-                """
-                augmented_batch = vmap(
-                    lambda x: jax.image.resize(
-                        x,
-                        shape=(x.shape[0] + 8, x.shape[0] + 8, x.shape[-1]),
-                        method="bilinear",
-                        antialias=True,
-                    )
-                )(batch)
-                batch = vmap(
-                    lambda x: augmentation(
-                        key=next(self.rng_seq), image=x, crop_sizes=batch[0].shape
-                    )
-                )(augmented_batch)
-                """
+                # augmented_batch = vmap(
+                #    lambda x: jax.image.resize(
+                #        x,
+                #        shape=(x.shape[0] + 8, x.shape[0] + 8, x.shape[-1]),
+                #        method="bilinear",
+                #        antialias=True,
+                #    )
+                # )(batch)
+                # batch = vmap(
+                #    lambda x: augmentation(
+                #        key=next(self.rng_seq), image=x, crop_sizes=batch[0].shape
+                #    )
+                # )(augmented_batch)
             else:
                 subbatch_j = augmentation(key=next(self.rng_seq), image=subbatch_j)
-                """
-                batch = vmap(lambda x: augmentation(key=next(self.rng_seq), image=x))(
-                    batch
-                )
-                """
+                # subbatch_j = vmap(lambda x: augmentation(key=next(self.rng_seq), image=x))(
+                #    subbatch_j
+                # )
         batch = jnp.array(list(zip(subbatch_i, subbatch_j)))
         batch = batch.reshape(-1, *batch.shape[2:])
         if subbatch_i.shape[0] > subbatch_j.shape[0]:
@@ -445,7 +441,7 @@ class OKOLoader:
         else:
             # create "hard" targets with a point mass at the pair class
             y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
-        # y_n = jax.nn.one_hot(x=odd_classes, num_classes=self.num_classes)
+        y_n = jax.nn.one_hot(x=odd_classes, num_classes=self.num_classes)
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
         if self.data_config.apply_augmentations:
@@ -453,8 +449,8 @@ class OKOLoader:
             X = self.apply_augmentations(X)
         if self.data_config.is_rgb_dataset:
             X = self._normalize(X)
-        return (X, y_p)
-        # return (X, (y_p, y_n))
+        # return (X, y_p)
+        return (X, (y_p, y_n))
 
     # @jaxtyped
     # @typechecker

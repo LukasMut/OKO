@@ -171,7 +171,7 @@ def loss_fn_custom(
     target_type: str,
 ) -> Tuple[Array, Tuple[Array]]:
     logits = custom_predict(state, params, X)
-    """
+    
     if target_type.startswith("soft"):
         log_probs = jax.nn.log_softmax(logits[0], axis=-1)
         loss_p = kl_divergence(y[0], log_probs).mean()
@@ -179,12 +179,14 @@ def loss_fn_custom(
         loss_p = optax.softmax_cross_entropy(logits[0], y[0]).mean()
     loss_n = optax.softmax_cross_entropy(logits[1], y[1]).mean()
     loss = loss_p + loss_n
+    
     """
     if target_type.startswith("soft"):
         log_probs = jax.nn.log_softmax(logits, axis=-1)
         loss = kl_divergence(y, log_probs).mean()
     else:
         loss = optax.softmax_cross_entropy(logits, y).mean()
+    """
     return loss, logits
 
 
@@ -197,7 +199,7 @@ def loss_fn_resnet(
     train: bool = True,
 ) -> Tuple[Array, Tuple[Array]]:
     logits, new_state = resnet_predict(state, params, X, train)
-    """
+    
     if target_type.startswith("soft"):
         log_probs = jax.nn.log_softmax(logits[0], axis=-1)
         loss_p = kl_divergence(y[0], log_probs).mean()
@@ -205,12 +207,14 @@ def loss_fn_resnet(
         loss_p = optax.softmax_cross_entropy(logits[0], y[0]).mean()
     loss_n = optax.softmax_cross_entropy(logits[1], y[1]).mean()
     loss = loss_p + loss_n
+
     """
     if target_type.startswith("soft"):
         log_probs = jax.nn.log_softmax(logits, axis=-1)
         loss = kl_divergence(y, log_probs).mean()
     else:
         loss = optax.softmax_cross_entropy(logits, y).mean()
+    """
     aux = (logits, new_state)
     return loss, aux
 
