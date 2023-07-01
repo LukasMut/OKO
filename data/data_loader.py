@@ -299,13 +299,11 @@ class OKOLoader:
 
         elif self.data_config.name.lower() == "fashion_mnist":
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
-            self.flip_up_down = jax.jit(pix.random_flip_up_down)
-            self.augmentations = [self.flip_left_right, self.flip_up_down]
+            self.augmentations = [self.flip_left_right]
 
         elif self.data_config.name.lower().startswith("cifar"):
             self.rnd_crop = pix.random_crop
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
-            # self.augmentations = [self.flip_left_right]
             self.augmentations = [self.rnd_crop, self.flip_left_right]
 
     # @jaxtyped
@@ -339,10 +337,9 @@ class OKOLoader:
                 #    )
                 # )(augmented_batch)
             else:
-                subbatch_j = augmentation(key=next(self.rng_seq), image=subbatch_j)
-                # subbatch_j = vmap(lambda x: augmentation(key=next(self.rng_seq), image=x))(
-                #    subbatch_j
-                # )
+                subbatch_j = vmap(
+                    lambda x: augmentation(key=next(self.rng_seq), image=x)
+                )(subbatch_j)
         batch = jnp.array(list(zip(subbatch_i, subbatch_j)))
         batch = batch.reshape(-1, *batch.shape[2:])
         if subbatch_i.shape[0] > subbatch_j.shape[0]:
@@ -424,7 +421,7 @@ class OKOLoader:
     # @jaxtyped
     # @typechecker
     def sample_oko_batch(
-        self
+        self,
     ) -> Tuple[
         Union[
             UInt8orFP32[Array, "#batchk h w c"],
