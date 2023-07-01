@@ -312,15 +312,17 @@ class OKOLoader:
     def apply_augmentations(
         self, batch: UInt8orFP32[np.ndarray, "#batchk h w c"]
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
+        subbatch_i = batch[::2]
+        subbatch_j = batch[1::2]
         for i, augmentation in enumerate(self.augmentations):
             if self.data_config.name.startswith("cifar") and i == 0:
                 augmented_batch = vmap(lambda x: jnp.pad(x, pad_width=4, mode="edge"))(
-                    batch
+                    subbatch_j
                 )
-                batch = augmentation(
+                subbatch_j = augmentation(
                     key=next(self.rng_seq),
                     image=augmented_batch,
-                    crop_sizes=batch.shape,
+                    crop_sizes=subbatch_j.shape,
                 )
                 """
                 augmented_batch = vmap(
@@ -338,12 +340,16 @@ class OKOLoader:
                 )(augmented_batch)
                 """
             else:
-                batch = augmentation(key=next(self.rng_seq), image=batch)
+                subbatch_j = augmentation(key=next(self.rng_seq), image=subbatch_j)
                 """
                 batch = vmap(lambda x: augmentation(key=next(self.rng_seq), image=x))(
                     batch
                 )
                 """
+        batch = jnp.array(list(zip(subbatch_i, subbatch_j)))
+        batch = batch.reshape(-1, *batch.shape[2:])
+        if subbatch_i.shape[0] > subbatch_j.shape[0]:
+            batch = jnp.concatenate((batch, subbatch_i[-1][None, ...]), axis=0)
         return batch
 
     # @jaxtyped
@@ -443,8 +449,8 @@ class OKOLoader:
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
         if self.data_config.apply_augmentations:
-            if (idx + 1) % 2 == 0:
-                X = self.apply_augmentations(X)
+            # if (idx + 1) % 2 == 0:
+            X = self.apply_augmentations(X)
         if self.data_config.is_rgb_dataset:
             X = self._normalize(X)
         return (X, y_p)
