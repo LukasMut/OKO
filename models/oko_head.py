@@ -68,6 +68,7 @@ class OKOHead(nn.Module):
     ]:
         if train:
             out_p = self.aggregation(x)
+            """
             x = rearrange(
                 x, "(b k) d -> b (k d)", b=x.shape[0] // (self.k + 2), k=self.k + 2
             )
@@ -76,7 +77,6 @@ class OKOHead(nn.Module):
             out = (out_p, out_n)
             """
             out = out_p
-            """
         else:
             out = self.query(x)
         return out

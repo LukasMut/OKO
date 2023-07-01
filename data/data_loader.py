@@ -441,7 +441,7 @@ class OKOLoader:
         else:
             # create "hard" targets with a point mass at the pair class
             y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
-        y_n = jax.nn.one_hot(x=odd_classes, num_classes=self.num_classes)
+        # y_n = jax.nn.one_hot(x=odd_classes, num_classes=self.num_classes)
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
         if self.data_config.apply_augmentations:
@@ -449,8 +449,8 @@ class OKOLoader:
             X = self.apply_augmentations(X)
         if self.data_config.is_rgb_dataset:
             X = self._normalize(X)
-        # return (X, y_p)
-        return (X, (y_p, y_n))
+        return (X, y_p)
+        # return (X, (y_p, y_n))
 
     # @jaxtyped
     # @typechecker
