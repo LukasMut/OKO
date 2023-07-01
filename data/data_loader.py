@@ -111,9 +111,10 @@ class SetMaker:
             pair_classes=pair_classes,
         )
         sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
-        # if self.target_type == "soft":
-        odd_classes = self.vget_odd_classes(sets, pair_classes)
-        return sets, pair_classes, odd_classes
+        if self.target_type == "soft":
+            odd_classes = self.vget_odd_classes(sets, pair_classes)
+            return sets, pair_classes, odd_classes
+        return sets, pair_classes
 
 
 @register_pytree_node_class
@@ -423,8 +424,7 @@ class OKOLoader:
     # @jaxtyped
     # @typechecker
     def sample_oko_batch(
-        self,
-        idx: int,
+        self
     ) -> Tuple[
         Union[
             UInt8orFP32[Array, "#batchk h w c"],
@@ -434,9 +434,11 @@ class OKOLoader:
     ]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members()
-        sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
+        # sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
+        sets, pair_classes = self.set_maker._make_sets(set_members)
         if self.data_config.targets == "soft":
             # create "soft" targets that reflect the true probability distribution of the classes in a set
+            sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
             y_p = self.target_maker._make_targets(pair_classes, odd_classes)
         else:
             # create "hard" targets with a point mass at the pair class
@@ -445,7 +447,6 @@ class OKOLoader:
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
         if self.data_config.apply_augmentations:
-            # if (idx + 1) % 2 == 0:
             X = self.apply_augmentations(X)
         if self.data_config.is_rgb_dataset:
             X = self._normalize(X)
@@ -466,8 +467,8 @@ class OKOLoader:
         ]
     ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
-        for idx in range(self.num_batches):
-            yield self.sample_oko_batch(idx)
+        for _ in range(self.num_batches):
+            yield self.sample_oko_batch()
 
     def __iter__(self) -> Iterator:
         if self.train:
