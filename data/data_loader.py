@@ -313,7 +313,11 @@ class OKOLoader:
     # @jaxtyped
     # @typechecker
     def apply_augmentations(
-        self, batch: UInt8orFP32[np.ndarray, "#batchk h w c"]
+        self,
+        batch: Union[
+            UInt8orFP32[np.ndarray, "#batchk h w c"],
+            UInt8orFP32[Array, "#batchk h w c"],
+        ],
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
         subbatch_i = batch[::2]
         subbatch_j = batch[1::2]
