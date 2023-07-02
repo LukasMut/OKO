@@ -319,14 +319,6 @@ class OKOLoader:
         subbatch_j = batch[1::2]
         for i, augmentation in enumerate(self.augmentations):
             if self.data_config.name.startswith("cifar") and i == 0:
-                augmented_batch = vmap(lambda x: jnp.pad(x, pad_width=4, mode="edge"))(
-                    subbatch_j
-                )
-                subbatch_j = augmentation(
-                    key=next(self.rng_seq),
-                    image=augmented_batch,
-                    crop_sizes=subbatch_j.shape,
-                )
                 # augmented_batch = vmap(
                 #    lambda x: jax.image.resize(
                 #        x,
@@ -334,12 +326,15 @@ class OKOLoader:
                 #        method="bilinear",
                 #        antialias=True,
                 #    )
-                # )(batch)
-                # batch = vmap(
-                #    lambda x: augmentation(
-                #        key=next(self.rng_seq), image=x, crop_sizes=batch[0].shape
-                #    )
-                # )(augmented_batch)
+                # )(subbatch_j)
+                augmented_batch = vmap(lambda x: jnp.pad(x, pad_width=4, mode="edge"))(
+                    subbatch_j
+                )
+                subbatch_j = vmap(
+                    lambda x: augmentation(
+                        key=next(self.rng_seq), image=x, crop_sizes=batch[0].shape
+                    )
+                )(augmented_batch)
             else:
                 subbatch_j = vmap(
                     lambda x: augmentation(key=next(self.rng_seq), image=x)
