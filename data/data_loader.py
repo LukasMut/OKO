@@ -104,6 +104,10 @@ class SetMaker:
             Int32[np.ndarray, "#batch"],
             Int32[Array, "#batch k"],
         ],
+        Tuple[
+            Int32[np.ndarray, "#batch set_card"],
+            Int32[np.ndarray, "#batch"],
+        ],
     ]:
         pair_classes = self.choose_pair_classes(members)
         sets = self.make_sets(
