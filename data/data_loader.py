@@ -417,8 +417,6 @@ class OKOLoader:
                     )
                 )
             X = self.X[np.asarray(subset)]
-            # if self.data_config.is_rgb_dataset:
-            #    X = self._normalize(X)
             y = self.y[np.asarray(subset)]
             yield (X, y)
 

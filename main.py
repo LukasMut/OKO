@@ -751,7 +751,9 @@ if __name__ == "__main__":
     if args.dataset in utils.RGB_DATASETS:
         val_images, val_labels = val_set
         test_images, test_labels = test_set
-        val_images = utils.normalize_images(images=val_images, data_config=data_config)
+        val_images = utils.normalize_images(
+            images=val_images, data_config=data_config
+        )
         test_images = utils.normalize_images(
             images=test_images, data_config=data_config
         )
