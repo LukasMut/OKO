@@ -39,6 +39,10 @@ class OKOHead(nn.Module):
             )
         else:
             self.query = nn.Dense(self.num_classes, name="oko_query")
+            self.key = nn.Dense(self.num_classes, name="oko_key")
+        self.attention = self.param(
+            "attention", jax.nn.initializers.ones, ((self.k + 2) * self.features,)
+        )
 
     @jaxtyped
     @typechecker
@@ -63,7 +67,13 @@ class OKOHead(nn.Module):
         Tuple[Float32[Array, "#batch num_cls"], Float32[Array, "#batch num_cls"]],
     ]:
         if train:
-            out = self.aggregation(x)
+            out_p = self.aggregation(x)
+            x_n = rearrange(
+                x, "(b k) d -> b (k d)", b=x.shape[0] // (self.k + 2), k=self.k + 2
+            )
+            x_n = x_n + (x_n * self.attention)
+            out_n = self.key(x_n)
+            out = (out_p, out_n)
         else:
             out = self.query(x)
         return out

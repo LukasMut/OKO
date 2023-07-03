@@ -110,10 +110,6 @@ class SetMaker:
             Int32[np.ndarray, "#batch"],
             Int32[Array, "#batch k"],
         ],
-        Tuple[
-            Int32[np.ndarray, "#batch set_card"],
-            Int32[np.ndarray, "#batch"],
-        ],
     ]:
         pair_classes = self.choose_pair_classes(members)
         sets = self.make_sets(
@@ -121,10 +117,8 @@ class SetMaker:
             pair_classes=pair_classes,
         )
         sets = np.apply_along_axis(np.random.permutation, axis=1, arr=sets)
-        if self.target_type == "soft":
-            odd_classes = self.vget_odd_classes(sets, pair_classes)
-            return sets, pair_classes, odd_classes
-        return sets, pair_classes
+        odd_classes = self.vget_odd_classes(sets, pair_classes)
+        return sets, pair_classes, odd_classes
 
 
 @register_pytree_node_class
@@ -438,22 +432,18 @@ class OKOLoader:
     ]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members()
-        # sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
-        sets, pair_classes = self.set_maker._make_sets(set_members)
-        if self.data_config.targets == "soft":
-            # create "soft" targets that reflect the true probability distribution of the classes in a set
-            sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
-            y = self.target_maker._make_targets(pair_classes, odd_classes)
-        else:
-            # create "hard" targets with a point mass at the pair class
-            y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
+        sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
+        # create "hard" targets with a point mass at the pair class
+        y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
+        # create "hard" targets with a point mass at the odd class
+        y_n = jax.nn.one_hot(x=odd_classes, num_classes=self.num_classes)
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
         if self.data_config.apply_augmentations:
             X = self.apply_augmentations(X)
         if self.data_config.is_rgb_dataset:
             X = self._normalize(X)
-        return (X, y)
+        return (X, (y_p, y_n))
 
     # @jaxtyped
     # @typechecker
