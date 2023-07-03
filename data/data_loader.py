@@ -21,12 +21,18 @@ from jaxtyping import AbstractDtype, Array, Float32, Float64, Int32, jaxtyped
 from ml_collections import config_dict
 from typeguard import typechecked as typechecker
 
+from .augmentations import RandomCrop
+
 FrozenDict = config_dict.FrozenConfigDict
 PRNGSequence = Any
 
 
 class UInt8orFP32(AbstractDtype):
     dtypes = ["uint8", "float32"]
+
+
+class UInt8orFP64(AbstractDtype):
+    dtypes = ["uint8", "float64"]
 
 
 class Int32or64(AbstractDtype):
@@ -266,7 +272,7 @@ class OKOLoader:
                 )
 
             self._create_functions()
-            self._make_augmentations()
+            self._make_augmentations(max_num=max_num)
         else:
             self.num_batches = math.ceil(
                 self.X.shape[0] / self.data_config.main_batch_size
@@ -296,7 +302,7 @@ class OKOLoader:
         if self.train:
             self.sample_set_instances = partial(sample_set_instances, self.y_prime)
 
-    def _make_augmentations(self) -> None:
+    def _make_augmentations(self, max_num: Optional[int] = None) -> None:
         if self.data_config.name.lower() == "mnist":
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
             self.augmentations = [self.flip_left_right]
@@ -306,7 +312,7 @@ class OKOLoader:
             self.augmentations = [self.flip_left_right]
 
         elif self.data_config.name.lower().startswith("cifar"):
-            self.rnd_crop = pix.random_crop
+            self.rnd_crop = RandomCrop(crop_size=self.X.shape[1:], max_num=max_num)
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
             self.augmentations = [self.rnd_crop, self.flip_left_right]
 
@@ -315,7 +321,7 @@ class OKOLoader:
     def apply_augmentations(
         self,
         batch: Union[
-            UInt8orFP32[np.ndarray, "#batchk h w c"],
+            UInt8orFP64[np.ndarray, "#batchk h w c"],
             UInt8orFP32[Array, "#batchk h w c"],
         ],
     ) -> UInt8orFP32[Array, "#batchk h w c"]:
@@ -334,11 +340,7 @@ class OKOLoader:
                 augmented_batch = vmap(lambda x: jnp.pad(x, pad_width=4, mode="edge"))(
                     subbatch_j
                 )
-                subbatch_j = vmap(
-                    lambda x: augmentation(
-                        key=next(self.rng_seq), image=x, crop_sizes=batch[0].shape
-                    )
-                )(augmented_batch)
+                subbatch_j = augmentation.apply(augmented_batch)
             else:
                 subbatch_j = vmap(
                     lambda x: augmentation(key=next(self.rng_seq), image=x)
@@ -355,11 +357,11 @@ class OKOLoader:
         self,
         batch: Union[
             UInt8orFP32[Array, "#batchk h w c"],
-            UInt8orFP32[np.ndarray, "#batchk h w c"],
+            UInt8orFP64[np.ndarray, "#batchk h w c"],
         ],
     ) -> Union[
         UInt8orFP32[Array, "#batchk h w c"],
-        UInt8orFP32[np.ndarray, "#batchk h w c"],
+        UInt8orFP64[np.ndarray, "#batchk h w c"],
     ]:
         batch = batch / self.data_config.max_pixel_value
         batch -= self.data_config.means
