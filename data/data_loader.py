@@ -397,6 +397,7 @@ class OKOLoader:
             Union[
                 UInt8orFP32[Array, "#batch h w c"],
                 UInt8orFP32[np.ndarray, "#batchk h w c"],
+                UInt8orFP64[np.ndarray, "#batchk h w c"],
             ],
             Float32[Array, "#batch num_cls"],
         ]
@@ -430,7 +431,7 @@ class OKOLoader:
             UInt8orFP32[Array, "#batchk h w c"],
             UInt8orFP32[np.ndarray, "#batchk h w c"],
         ],
-        Tuple[Float32[Array, "#batch num_cls"], Float32[Array, "#batch num_cls"]],
+        Float32[Array, "#batch num_cls"],
     ]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members()
@@ -461,7 +462,7 @@ class OKOLoader:
                 UInt8orFP32[Array, "#batchk h w c"],
                 UInt8orFP32[np.ndarray, "#batchk h w c"],
             ],
-            Tuple[Float32[Array, "#batch num_cls"], Float32[Array, "#batch num_cls"]],
+            Float32[Array, "#batch num_cls"],
         ]
     ]:
         """Simultaneously sample odd-one-out triplet and main multi-class task mini-batches."""
