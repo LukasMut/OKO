@@ -1,4 +1,4 @@
-__all__ = ["ColorAugmentations", "RandomCrop"]
+__all__ = ["ColorAugmentations", "RandomCrop", "Resize"]
 
 from dataclasses import dataclass
 from typing import Iterator, Tuple, Union
