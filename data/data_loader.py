@@ -312,7 +312,10 @@ class OKOLoader:
             self.augmentations = [self.flip_left_right]
 
         elif self.data_config.name.lower().startswith("cifar"):
-            self.rnd_crop = RandomCrop(crop_size=self.X.shape[1:], max_num=max_num)
+            self.rnd_crop = RandomCrop(
+                crop_size=self.X.shape[1:],
+                random_numbers=iter(np.random.permutation(max_num)),
+            )
             self.flip_left_right = jax.jit(pix.random_flip_left_right)
             self.augmentations = [self.rnd_crop, self.flip_left_right]
 
