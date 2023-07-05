@@ -40,8 +40,8 @@ class OKOHead(nn.Module):
         else:
             self.query = nn.Dense(self.num_classes, name="oko_query")
             self.key = nn.Dense(self.num_classes, name="oko_key")
-        self.attention = self.param(
-            "attention", jax.nn.initializers.ones, ((self.k + 2) * self.features,)
+        self.reweighting = self.param(
+            "reweighting", jax.nn.initializers.ones, ((self.k + 2) * self.features,)
         )
 
     @jaxtyped
@@ -71,7 +71,7 @@ class OKOHead(nn.Module):
             x_n = rearrange(
                 x, "(b k) d -> b (k d)", b=x.shape[0] // (self.k + 2), k=self.k + 2
             )
-            x_n = x_n + (x_n * self.attention)
+            x_n = x_n + (x_n * self.reweighting)
             out_n = self.key(x_n)
             out = (out_p, out_n)
         else:
