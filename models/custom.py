@@ -84,8 +84,8 @@ class Custom(nn.Module):
         self.head = OKOHead(
             backbone="custom",
             num_classes=self.num_classes,
-            features=self.encoder_widths[-1],
             k=self.k,
+            features=self.encoder_widths[-1],
         )
 
     @nn.compact
@@ -99,6 +99,6 @@ class Custom(nn.Module):
     ]:
         x = self.encoder(x)
         if self.capture_intermediates:
-            self.sow("intermediates", "latent_reps")
+            self.sow("intermediates", "features", x)
         out = self.head(x, train)
         return out

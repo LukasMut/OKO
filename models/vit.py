@@ -99,6 +99,7 @@ class ViT(nn.Module):
             backbone="vit",
             num_classes=self.num_classes,
             k=self.k,
+            features=self.embed_dim,
         )
 
     @nn.compact
@@ -124,8 +125,7 @@ class ViT(nn.Module):
 
         # use classification token
         cls = x[:, 0]
-
         if self.capture_intermediates:
-            self.sow("intermediates", "latent_reps")
+            self.sow("intermediates", "features", cls)
         out = self.head(cls, train)
         return out
