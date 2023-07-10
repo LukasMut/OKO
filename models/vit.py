@@ -126,6 +126,6 @@ class ViT(nn.Module):
         cls = x[:, 0]
 
         if self.capture_intermediates:
-            self.sow("intermediates", "latent_reps")
+            self.sow("intermediates", "features", cls)
         out = self.head(cls, train)
         return out

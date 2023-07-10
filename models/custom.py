@@ -99,6 +99,6 @@ class Custom(nn.Module):
     ]:
         x = self.encoder(x)
         if self.capture_intermediates:
-            self.sow("intermediates", "latent_reps")
+            self.sow("intermediates", "feautures", x)
         out = self.head(x, train)
         return out

@@ -68,7 +68,7 @@ class KL_Div:
         targets: Float32[Array, "#batch num_cls"],
         log_probs: Float32[Array, "#batch num_cls"],
     ) -> Float32[Array, "#batch"]:
-        return self.kl_divergence(targets, log_probs)
+        return self.kl_divergence()(targets, log_probs)
 
 
 @jax.jit

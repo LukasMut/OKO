@@ -6,7 +6,6 @@ __all__ = ["OKOHead"]
 from typing import Any, Tuple, Union
 
 import flax.linen as nn
-import jax
 import jax.numpy as jnp
 from einops import rearrange
 from jax import vmap
@@ -18,7 +17,6 @@ class OKOHead(nn.Module):
     backbone: str
     num_classes: int
     k: int
-    features: int
     dtype: Any = jnp.float32
 
     def setup(self):
