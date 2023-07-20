@@ -21,7 +21,7 @@ from jaxtyping import AbstractDtype, Array, Float32, Float64, Int32, jaxtyped
 from ml_collections import config_dict
 from typeguard import typechecked as typechecker
 
-from .augmentations import RandomCrop
+from data.augmentations import RandomCrop
 
 FrozenDict = config_dict.FrozenConfigDict
 PRNGSequence = Any
@@ -45,7 +45,7 @@ class SetMaker:
     num_odds: int
     target_type: str
 
-    def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
+    def tree_flatten(self) -> Tuple[tuple, Dict[str, Union[int, str]]]:
         children = ()
         aux_data = {"num_odds": self.num_odds, "targets": self.target_type}
         return (children, aux_data)
@@ -134,7 +134,7 @@ class TargetMaker:
     num_odds: int
     set_card: int
 
-    def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
+    def tree_flatten(self) -> Tuple[tuple, Dict[str, int]]:
         children = ()
         aux_data = {
             "num_cls": self.num_cls,
@@ -197,7 +197,9 @@ class Sampler:
     num_set_classes: int
     random_numbers: Iterator
 
-    def tree_flatten(self) -> Tuple[Tuple[Int32[Array, "num_cls"]], Dict[str, Any]]:
+    def tree_flatten(
+        self,
+    ) -> Tuple[Tuple[Int32[Array, "num_cls"]], Dict[str, Union[int, Iterator]]]:
         children = (self.classes,)
         aux_data = {
             "batch_size": self.batch_size,
