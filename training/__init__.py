@@ -1,1 +1,1 @@
-from .trainer import OKOTrainer
+from training.trainer import OKOTrainer

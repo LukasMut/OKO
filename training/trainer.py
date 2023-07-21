@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+__all__ = ["OKOTrainer"]
+
 import os
 import pickle
 from collections import defaultdict
@@ -200,7 +202,7 @@ class OKOTrainer:
         self.rng_seq = hk.PRNGSequence(self.rnd_seed)
         self.rng = jax.random.PRNGKey(self.rnd_seed)
         self.gpu_devices = jax.local_devices(backend="gpu")
-        self.backbone = "custom" # self.model_config.type.lower()
+        self.backbone = "custom"  # self.model_config.type.lower()
         # inititalize model
         self.init_model()
         # enable logging
@@ -256,7 +258,7 @@ class OKOTrainer:
 
         batch = get_init_batch(self.data_config.oko_batch_size)
         batch = jax.device_put(batch, device=self.gpu_devices[0])
-        
+
         if self.backbone == "resnet":
             variables = self.model.init(key_j, batch, train=True)
             init_params, self.init_batch_stats = (
@@ -301,7 +303,6 @@ class OKOTrainer:
         y: Float32[Array, "#batch num_cls"],
         rng=None,
     ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
-
         # get loss, gradients for objective function, and other outputs of loss function
         if self.backbone == "vit":
             state, loss, (logits, rng) = self.loss.update(state, X, y, rng)
