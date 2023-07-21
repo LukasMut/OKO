@@ -6,7 +6,7 @@ import flax.linen as nn
 import jax.numpy as jnp
 from jaxtyping import Array
 
-from .oko_head import OKOHead
+from models.oko_head import OKOHead
 
 
 def img_to_patch(x, patch_size, flatten_channels=True) -> Array:

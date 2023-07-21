@@ -5,10 +5,9 @@ from typing import Sequence, Tuple, Union
 
 import flax.linen as nn
 from jaxtyping import AbstractDtype, Array, Float32, jaxtyped
-from pyexpat import features
 from typeguard import typechecked as typechecker
 
-from .oko_head import OKOHead
+from models.oko_head import OKOHead
 
 
 class UInt8orFP32(AbstractDtype):

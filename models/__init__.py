@@ -1,4 +1,4 @@
-from .custom import Custom
-from .modules import *
-from .resnet import ResNet18, ResNet34, ResNet50, ResNet101
-from .vit import ViT
+from models.custom import Custom
+from models.modules import Identity, Normalization, Sigmoid, Tanh
+from models.resnet import ResNet18, ResNet34, ResNet50, ResNet101
+from models.vit import ViT
