@@ -1,2 +1,2 @@
-from .data_loader import OKOLoader
-from .data_partitioner import DataPartitioner
+from data.data_loader import OKOLoader
+from data.data_partitioner import DataPartitioner

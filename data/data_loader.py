@@ -21,7 +21,7 @@ from jaxtyping import AbstractDtype, Array, Float32, Float64, Int32, jaxtyped
 from ml_collections import config_dict
 from typeguard import typechecked as typechecker
 
-from .augmentations import RandomCrop
+from data.augmentations import RandomCrop
 
 FrozenDict = config_dict.FrozenConfigDict
 PRNGSequence = Any

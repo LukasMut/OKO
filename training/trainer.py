@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+__all__ = ["OKOTrainer"]
+
 import os
 import pickle
 from collections import defaultdict
@@ -298,7 +300,6 @@ class OKOTrainer:
         y: Float32[Array, "#batch num_cls"],
         rng=None,
     ) -> Tuple[PyTree, Float32[Array, ""], Float32[Array, "#batch num_cls"]]:
-
         # get loss, gradients for objective function, and other outputs of loss function
         if self.backbone == "vit":
             state, loss, (logits, rng) = self.loss.update(state, X, y, rng)

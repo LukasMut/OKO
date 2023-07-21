@@ -7,8 +7,8 @@ import jax.numpy as jnp
 from flax import linen as nn
 from jaxtyping import Array, Float32
 
-from .common import ConvBlock, ModuleDef
-from .oko_head import OKOHead
+from models.common import ConvBlock, ModuleDef
+from models.oko_head import OKOHead
 
 STAGE_SIZES = {
     18: [2, 2, 2, 2],
