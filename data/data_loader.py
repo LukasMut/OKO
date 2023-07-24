@@ -59,7 +59,7 @@ class SetMaker:
     @typechecker
     def make_sets(
         members: Int32[Array, "#batch _"],
-        pair_classes: Int32[np.ndarray, "#batch"],
+        pair_classes: Int32[Array, "#batch"],
     ) -> Int32[np.ndarray, "#batch set_card"]:
         """Make b sets with k+2 members (i.e., set_card = k+2), where k denotes the number of odd classes in the set."""
         sets = np.apply_along_axis(
@@ -80,7 +80,7 @@ class SetMaker:
     def vget_odd_classes(
         self,
         sets: Int32[np.ndarray, "#batch set_card"],
-        pair_classes: Int32[np.ndarray, "#batch"],
+        pair_classes: Int32[Array, "#batch"],
     ) -> Union[Int32[Array, "#batch"], Int32[Array, "#batch k"]]:
         """Get the k odd classes for a batch of sets."""
         odd_classes = vmap(self.get_odd_classes)(sets, pair_classes)
