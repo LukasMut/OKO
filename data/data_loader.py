@@ -59,7 +59,7 @@ class SetMaker:
     @typechecker
     def make_sets(
         members: Int32[Array, "#batch _"],
-        pair_classes: Int32[np.ndarray, "#batch"],
+        pair_classes: Int32[Array, "#batch"],
     ) -> Int32[np.ndarray, "#batch set_card"]:
         """Make b sets with k+2 members (i.e., set_card = k+2), where k denotes the number of odd classes in the set."""
         return np.apply_along_axis(
@@ -87,15 +87,6 @@ class SetMaker:
             # if there's a single odd class in each set, flatten array
             odd_classes = odd_classes.ravel()
         return odd_classes
-
-    @staticmethod
-    @jaxtyped
-    @typechecker
-    def choose_pair_classes(
-        members: Int32[Array, "#batch _"]
-    ) -> Int32[np.ndarray, "#batch"]:
-        """Randomly choose a pair class from all k+1 classes in a set with k+1 members (each member represents an instance from a class)."""
-        return np.apply_along_axis(np.random.choice, axis=1, arr=members)
 
     @jaxtyped
     @typechecker
