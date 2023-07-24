@@ -95,17 +95,17 @@ class SetMaker:
     ) -> Union[
         Tuple[
             Int32[np.ndarray, "#batch set_card"],
-            Int32[np.ndarray, "#batch"],
+            Int32[Array, "#batch"],
             Int32[Array, "#batch"],
         ],
         Tuple[
             Int32[np.ndarray, "#batch set_card"],
-            Int32[np.ndarray, "#batch"],
+            Int32[Array, "#batch"],
             Int32[Array, "#batch k"],
         ],
         Tuple[
             Int32[np.ndarray, "#batch set_card"],
-            Int32[np.ndarray, "#batch"],
+            Int32[Array, "#batch"],
         ],
     ]:
         pair_classes = members[:, 0]
