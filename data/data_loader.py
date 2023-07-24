@@ -45,7 +45,7 @@ class SetMaker:
     num_odds: int
     target_type: str
 
-    def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
+    def tree_flatten(self) -> Tuple[tuple, Dict[str, Union[int, str]]]:
         children = ()
         aux_data = {"num_odds": self.num_odds, "targets": self.target_type}
         return (children, aux_data)
@@ -79,7 +79,7 @@ class SetMaker:
     def vget_odd_classes(
         self,
         sets: Int32[np.ndarray, "#batch set_card"],
-        pair_classes: Int32[np.ndarray, "#batch"],
+        pair_classes: Int32[Array, "#batch"],
     ) -> Union[Int32[Array, "#batch"], Int32[Array, "#batch k"]]:
         """Get the k odd classes for a batch of sets."""
         odd_classes = vmap(self.get_odd_classes)(sets, pair_classes)
@@ -103,14 +103,20 @@ class SetMaker:
             Int32[np.ndarray, "#batch"],
             Int32[Array, "#batch k"],
         ],
+        Tuple[
+            Int32[np.ndarray, "#batch set_card"],
+            Int32[np.ndarray, "#batch"],
+        ],
     ]:
         pair_classes = members[:, 0]
         sets = self.make_sets(
             members=members,
             pair_classes=pair_classes,
         )
-        odd_classes = self.vget_odd_classes(sets, pair_classes)
-        return sets, pair_classes, odd_classes
+        if self.target_type == "soft":
+            odd_classes = self.vget_odd_classes(sets, pair_classes)
+            return sets, pair_classes, odd_classes
+        return sets, pair_classes
 
 
 @register_pytree_node_class
@@ -120,7 +126,7 @@ class TargetMaker:
     num_odds: int
     set_card: int
 
-    def tree_flatten(self) -> Tuple[tuple, Dict[str, Any]]:
+    def tree_flatten(self) -> Tuple[tuple, Dict[str, int]]:
         children = ()
         aux_data = {
             "num_cls": self.num_cls,
@@ -183,7 +189,9 @@ class Sampler:
     num_set_classes: int
     random_numbers: Iterator
 
-    def tree_flatten(self) -> Tuple[Tuple[Int32[Array, "num_cls"]], Dict[str, Any]]:
+    def tree_flatten(
+        self,
+    ) -> Tuple[Tuple[Int32[Array, "num_cls"]], Dict[str, Union[int, Iterator]]]:
         children = (self.classes,)
         aux_data = {
             "batch_size": self.batch_size,
@@ -424,18 +432,22 @@ class OKOLoader:
     ]:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members()
-        sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
-        # create "hard" targets with a point mass at the pair class
-        y_p = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
-        # create "hard" targets with a point mass at the odd class
-        y_n = jax.nn.one_hot(x=odd_classes, num_classes=self.num_classes)
+        # sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
+        sets, pair_classes = self.set_maker._make_sets(set_members)
+        if self.data_config.targets == "soft":
+            # create "soft" targets that reflect the true probability distribution of the classes in a set
+            sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
+            y = self.target_maker._make_targets(pair_classes, odd_classes)
+        else:
+            # create "hard" targets with a point mass at the pair class
+            y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
         if self.data_config.apply_augmentations:
             X = self.apply_augmentations(X)
         if self.data_config.is_rgb_dataset:
             X = self._normalize(X)
-        return (X, (y_p, y_n))
+        return (X, y)
 
     # @jaxtyped
     # @typechecker
