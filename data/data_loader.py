@@ -433,13 +433,13 @@ class OKOLoader:
         """Uniformly sample odd-one-out triplet task mini-batches."""
         set_members = self.sampler.sample_members()
         # sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
-        sets, pair_classes = self.set_maker._make_sets(set_members)
         if self.data_config.targets == "soft":
             # create "soft" targets that reflect the true probability distribution of the classes in a set
             sets, pair_classes, odd_classes = self.set_maker._make_sets(set_members)
             y = self.target_maker._make_targets(pair_classes, odd_classes)
         else:
             # create "hard" targets with a point mass at the pair class
+            sets, pair_classes = self.set_maker._make_sets(set_members)
             y = jax.nn.one_hot(x=pair_classes, num_classes=self.num_classes)
         batch_sets = self.sample_batch_instances(sets)
         X = self.X[batch_sets.ravel()]
