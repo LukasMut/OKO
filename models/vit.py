@@ -125,7 +125,5 @@ class ViT(nn.Module):
         # use classification token
         cls = x[:, 0]
 
-        if self.capture_intermediates:
-            self.sow("intermediates", "features", cls)
         out = self.head(cls, train)
         return out
