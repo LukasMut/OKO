@@ -83,7 +83,6 @@ class Custom(nn.Module):
         self.head = OKOHead(
             backbone="custom",
             num_classes=self.num_classes,
-            features=self.encoder_widths[-1],
             k=self.k,
         )
 
@@ -97,7 +96,5 @@ class Custom(nn.Module):
         Tuple[Float32[Array, "#batch num_cls"], Float32[Array, "#batch num_cls"]],
     ]:
         x = self.encoder(x)
-        if self.capture_intermediates:
-            self.sow("intermediates", "feautures", x)
         out = self.head(x, train)
         return out
