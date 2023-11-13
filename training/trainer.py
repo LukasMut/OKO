@@ -22,6 +22,7 @@ from flax.training import checkpoints
 from flax.training.early_stopping import EarlyStopping
 from jax.tree_util import register_pytree_node_class
 from jaxtyping import Array, Float32, Int32, PyTree
+
 # from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
@@ -276,10 +277,8 @@ class OKOTrainer:
                 )["params"]
                 setattr(self, "init_params", init_params)
             else:
-                variables = self.model.init(key_j, batch)
-                _, init_params = variables.pop("params")
-                setattr(self, "init_params", init_params)
-                del variables
+                params = self.model.init(key_j, batch)
+                setattr(self, "init_params", params["params"])
             self.init_batch_stats = None
         self.state = None
 
