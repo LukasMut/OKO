@@ -411,7 +411,7 @@ class OKOTrainer:
                 print(
                     f"Epoch: {epoch:03d}, Train Loss: {train_performance[0]:.4f}, Train Acc: {train_performance[1]:.4f}, Val Loss: {test_performance[0]:.4f}, Val Acc: {test_performance[1]:.4f}\n"
                 )
-                self.logger.flush()
+                # self.logger.flush()
                 # NOTE: periodically call "jax.clear_backends()" to clear cache
                 # This seems to prevent OOMs and / or memory leaks
                 jax.clear_backends()
