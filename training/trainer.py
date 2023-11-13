@@ -22,7 +22,7 @@ from flax.training import checkpoints
 from flax.training.early_stopping import EarlyStopping
 from jax.tree_util import register_pytree_node_class
 from jaxtyping import Array, Float32, Int32, PyTree
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
 import training.loss_funs as loss_funs
@@ -204,7 +204,7 @@ class OKOTrainer:
         # inititalize model
         self.init_model()
         # enable logging
-        self.logger = SummaryWriter(log_dir=self.dir_config.log_dir)
+        # self.logger = SummaryWriter(log_dir=self.dir_config.log_dir)
         self.early_stop = EarlyStopping(
             min_delta=1e-4, patience=self.optimizer_config.patience
         )
@@ -396,18 +396,18 @@ class OKOTrainer:
                 test_performance = self.train_epoch(batches=val_batches, train=False)
                 self.test_metrics.append(test_performance)
                 # Tensorboard logging
-                self.logger.add_scalar(
-                    "train/loss", np.asarray(train_performance[0]), global_step=epoch
-                )
-                self.logger.add_scalar(
-                    "train/acc", np.asarray(train_performance[1]), global_step=epoch
-                )
-                self.logger.add_scalar(
-                    "val/loss", np.asarray(test_performance[0]), global_step=epoch
-                )
-                self.logger.add_scalar(
-                    "val/acc", np.asarray(test_performance[1]), global_step=epoch
-                )
+                # self.logger.add_scalar(
+                #    "train/loss", np.asarray(train_performance[0]), global_step=epoch
+                # )
+                # self.logger.add_scalar(
+                #     "train/acc", np.asarray(train_performance[1]), global_step=epoch
+                # )
+                # self.logger.add_scalar(
+                #    "val/loss", np.asarray(test_performance[0]), global_step=epoch
+                # )
+                # self.logger.add_scalar(
+                #    "val/acc", np.asarray(test_performance[1]), global_step=epoch
+                # )
                 print(
                     f"Epoch: {epoch:03d}, Train Loss: {train_performance[0]:.4f}, Train Acc: {train_performance[1]:.4f}, Val Loss: {test_performance[0]:.4f}, Val Acc: {test_performance[1]:.4f}\n"
                 )
